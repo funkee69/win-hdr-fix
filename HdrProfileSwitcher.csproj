@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Configuration de base du projet -->
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- Métadonnées de l'application -->
+    <AssemblyName>HdrProfileSwitcher</AssemblyName>
+    <RootNamespace>HdrProfileSwitcher</RootNamespace>
+    <AssemblyTitle>HDR Profile Switcher</AssemblyTitle>
+    <AssemblyDescription>Basculement automatique des profils ICC/HDR selon l'écran actif</AssemblyDescription>
+    <AssemblyVersion>3.3.0.0</AssemblyVersion>
+    <FileVersion>3.3.0.0</FileVersion>
+    <Company>Colin Golberg</Company>
+    <Copyright>Copyright © 2026</Copyright>
+
+    <!-- Publication en fichier unique -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+
+    <!-- Désactiver la console (application tray icon pure) -->
+    <ApplicationIcon></ApplicationIcon>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WMI pour la détection des événements moniteur -->
+    <PackageReference Include="System.Management" Version="10.0.0-preview.3.25171.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Ressources Windows Forms générées -->
+    <Compile Update="ConfigForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+  </ItemGroup>
+
+</Project>

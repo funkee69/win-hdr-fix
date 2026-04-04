@@ -1,0 +1,10 @@
+bin/
+obj/
+*.exe
+*.dll
+*.pdb
+*.log
+*.user
+.vs/
+publish/
+sortie.txt
