@@ -29,7 +29,7 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
 
     <!-- Désactiver la console (application tray icon pure) -->
-    <ApplicationIcon></ApplicationIcon>
+    <ApplicationIcon>app.ico</ApplicationIcon>
     <Optimize>true</Optimize>
   </PropertyGroup>
 

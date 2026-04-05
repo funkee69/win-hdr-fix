@@ -1,53 +1,48 @@
-# HDR Profile Switcher for Windows 11
+# HDR Profile Switcher
 
-Tray utility that automatically applies the correct SDR/HDR ICC color profile per connected display on Windows 11.
+Utilitaire Windows qui applique automatiquement le bon profil ICC couleur (SDR/HDR) à chaque écran connecté.
 
-## Why?
-Windows 11 25H2 has no public API to programmatically switch ICC color profiles. All documented `mscms.dll` APIs return success without actually changing the active profile. This tool reverse-engineers the internal `DisplayColorManagement.dll` WinRT component to call the same APIs that Windows Settings uses.
+## Le problème
 
-## Features
-- 🖥️ Auto-detect connected displays (Alienware, LG OLED, SudoVGA/Apollo)
-- 🔄 Auto-switch SDR/HDR profiles when HDR state changes
-- 🎨 Per-display profile configuration via GUI
-- 📊 System tray icon showing current screen + mode
-- 📝 Detailed logging for troubleshooting
+Windows 11 ne permet pas de changer facilement de profil ICC par écran ni d'appliquer automatiquement le bon profil quand on passe de SDR à HDR (ou vice-versa). Le profil doit être changé manuellement à chaque fois dans Paramètres → Affichage → Profil de couleurs.
 
-## Supported Displays
-- **Alienware AW3423DWF** — SDR + HDR profile switching
-- **LG OLED TV** — HDR-only
-- **SudoVGA/Apollo virtual displays** — HDR-only (Steam Deck streaming)
+## La solution
 
-## Technical Details
-Uses undocumented Windows internal WinRT APIs:
-- `Windows.Internal.Graphics.Display.DisplayColorManagement.DisplayColorManagementServer`
-- `Windows.Internal.Graphics.Display.DisplayColorManagement.DisplayColorManagement`
-- Raw COM vtable calls to `GetColorManagerForDisplayAsync` and the Apply method
+HDR Profile Switcher tourne en tray (zone de notification) et :
+- Détecte automatiquement les écrans connectés et leur état HDR/SDR
+- Applique le profil ICC configuré pour chaque écran selon son mode
+- Surveille les changements d'état (branchement TV, activation/désactivation HDR)
+- Permet de configurer les profils via une interface graphique (clic droit → Configuration)
 
-See [PLAN.md](PLAN.md) for full reverse-engineering documentation.
+## Configuration requise
 
-## Build
-Requires .NET 10 SDK:
-```bash
-dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
-```
+- Windows 10 version 2004 (20H1) ou ultérieur
+- GPU avec driver WDDM 2.6+ (NVIDIA Pascal+, AMD RX 400+, Intel Gen10+)
+- Profils ICC installés dans `C:\Windows\System32\spool\drivers\color\`
 
-## Status
-🚧 **Work in progress** — Core WinRT chain working, profile setter identification in progress.
+## Installation
 
-## Project Structure
-```
-HdrProfileSwitcher.csproj  — Main tray application
-Program.cs                 — Entry point
-DisplayService.cs          — Display detection + profile management
-NativeApis.cs              — P/Invoke definitions
-DisplayMonitor.cs          — Monitor data model
-ProfileWatcher.cs          — HDR state change detection
-AppConfig.cs               — Configuration management
-ConfigForm.cs              — Settings GUI
-TrayIconManager.cs         — System tray icon
-Logger.cs                  — Logging
-TargetProbe/               — WinRT vtable probing tool
-DllMetaDump/               — DLL metadata extraction tool
-WinmdDump/                 — WinMD metadata scanner
-dump*.ps1                  — PowerShell probing scripts
-```
+1. Téléchargez la dernière release
+2. Placez `HdrProfileSwitcher.exe` et `config.json` dans un dossier de votre choix
+3. Lancez `HdrProfileSwitcher.exe`
+4. Clic droit sur l'icône tray → Configuration pour associer vos profils
+
+## Utilisation
+
+L'icône dans la zone de notification affiche :
+- La lettre de l'écran principal détecté
+- L'état SDR ou HDR
+
+Clic droit pour accéder au menu :
+- **Configuration** : associer profils SDR/HDR par écran
+- **Forcer le profil** : appliquer manuellement un profil
+- **Ouvrir le log** : voir les actions effectuées
+- **Quitter** : fermer l'application
+
+## Comment ça marche
+
+L'application utilise l'API Windows `ColorProfileAddDisplayAssociation` avec le LUID de chaque adaptateur graphique pour changer le profil ICC par défaut. Cette API est la méthode officielle Microsoft pour gérer les profils couleur sur Windows 10/11.
+
+## Licence
+
+MIT

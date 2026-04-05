@@ -1,0 +1,28 @@
+{
+  "écrans": [
+    {
+      "nom": "Alienware AW3423DWF",
+      "lettre": "A",
+      "motifRecherche": "AW3423DWF",
+      "profilSdr": "rtings-icc-profile.icm",
+      "profilHdr": "HDR PEAK 1000 11-02-2025 20559.icc"
+    },
+    {
+      "nom": "TV LG OLED",
+      "lettre": "L",
+      "motifRecherche": "LG TV",
+      "profilSdr": "",
+      "profilHdr": "LG HDR 04-03-2026 222658.icc"
+    },
+    {
+      "nom": "Steam Deck (SudoVGA)",
+      "lettre": "S",
+      "motifRecherche": "Steam Deck",
+      "profilSdr": "",
+      "profilHdr": "Steam Deck HDR 14-03-2025 16480.icc"
+    }
+  ],
+  "intervallePollingMs": 5000,
+  "fichierLog": "hdr-switcher.log",
+  "démarrageAuto": true
+}
