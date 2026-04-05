@@ -10,6 +10,10 @@ namespace HdrProfileSwitcher;
 /// <summary>
 /// Service principal de gestion des écrans.
 /// Énumère les moniteurs actifs, détecte le mode HDR et applique les profils ICC.
+///
+/// v4.1 — Mécanisme validé (05/04/2026, 800 nits confirmé NVIDIA app) :
+/// 1. Méthode primaire : Remove + Add(default) + Re-add via ColorProfileAddDisplayAssociation (LUID struct)
+/// 2. Méthode fallback : écriture directe registre ICM (REG_MULTI_SZ, premier élément = profil actif)
 /// </summary>
 public class DisplayService
 {
@@ -92,7 +96,6 @@ public class DisplayService
                 DétecterÉtatHdr(chemin, moniteur);
 
                 moniteurs.Add(moniteur);
-                _logger.Debug($"Écran détecté : {moniteur}");
             }
         }
         catch (Exception ex)
@@ -100,7 +103,15 @@ public class DisplayService
             _logger.Erreur("Erreur lors de l'énumération des écrans", ex);
         }
 
-        _logger.Info($"Écrans actifs trouvés : {moniteurs.Count}");
+        // Log uniquement au premier cycle ou si la liste/état des écrans a changé
+        string fingerprint = string.Join("|", moniteurs.Select(m => $"{m.NomConvivial}:{m.EstHdrActif}"));
+        if (fingerprint != _derniersÉcransFingerprint)
+        {
+            foreach (var m in moniteurs)
+                _logger.Debug($"Écran détecté : {m}");
+            _logger.Info($"Écrans actifs trouvés : {moniteurs.Count}");
+            _derniersÉcransFingerprint = fingerprint;
+        }
         return moniteurs;
     }
 
@@ -147,6 +158,20 @@ public class DisplayService
     }
 
     /// <summary>
+    /// Cache pour éviter de retenter HDR v2 toutes les 5 secondes
+    /// quand on sait déjà que ça ne marche pas sur ce système.
+    /// </summary>
+    private bool _hdrV2Tenté = false;
+    private bool _hdrV2Disponible = false;
+
+    // =========================================================================
+    // TRACKING POLLING — Éviter les logs redondants à chaque cycle (5 sec)
+    // =========================================================================
+    private string _derniersÉcransFingerprint = "";
+    private readonly Dictionary<uint, string> _hdrV1DernierLog = new();
+    private readonly Dictionary<string, string?> _dernièresAssociations = new();
+
+    /// <summary>
     /// Détecte l'état HDR d'un écran en essayant d'abord la version v2 (Windows 24H2+),
     /// puis en retombant sur la version v1 si nécessaire.
     /// </summary>
@@ -154,9 +179,17 @@ public class DisplayService
         NativeApis.DISPLAYCONFIG_PATH_INFO chemin,
         DisplayMonitor moniteur)
     {
-        // Essai version 2 (Windows 11 24H2+, avec ACM)
-        if (DétecterHdrV2(chemin, moniteur))
-            return;
+        // Essai version 2 (Windows 11 24H2+, avec ACM) — une seule fois
+        if (!_hdrV2Tenté)
+        {
+            _hdrV2Tenté = true;
+            _hdrV2Disponible = DétecterHdrV2(chemin, moniteur);
+            if (_hdrV2Disponible) return;
+        }
+        else if (_hdrV2Disponible)
+        {
+            if (DétecterHdrV2(chemin, moniteur)) return;
+        }
 
         // Fallback version 1 (Windows 10 1903+ jusqu'à Windows 11 23H2)
         DétecterHdrV1(chemin, moniteur);
@@ -173,8 +206,6 @@ public class DisplayService
     {
         try
         {
-            // Tailles à essayer : la v2 peut varier selon la version exacte du SDK/Windows
-            // On essaie d'abord notre struct, puis un buffer plus grand si ça échoue
             int structSize = Marshal.SizeOf<NativeApis.DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2>();
             _logger.Debug($"HDR v2 : tentative avec taille struct = {structSize} octets");
 
@@ -200,8 +231,6 @@ public class DisplayService
             }
 
             _logger.Debug($"HDR v2 struct échoué (code: {résultat}), tentative raw buffer...");
-
-            // Tentative avec buffer raw plus grand (128 octets, largement suffisant)
             return DétecterHdrV2Raw(chemin, moniteur);
         }
         catch (Exception ex)
@@ -219,7 +248,6 @@ public class DisplayService
         NativeApis.DISPLAYCONFIG_PATH_INFO chemin,
         DisplayMonitor moniteur)
     {
-        // Tailles à essayer : 32, 36, 40, 48, 64, 128 octets
         uint[] tailles = { 32, 36, 40, 48, 64, 128 };
 
         foreach (var taille in tailles)
@@ -227,27 +255,20 @@ public class DisplayService
             IntPtr buffer = Marshal.AllocHGlobal((int)taille);
             try
             {
-                // Remplir de zéros
                 for (int i = 0; i < (int)taille; i++)
                     Marshal.WriteByte(buffer, i, 0);
 
-                // Écrire le header manuellement
-                // header.type (offset 0, 4 octets)
+                // Header (offset 0-19)
                 Marshal.WriteInt32(buffer, 0, (int)NativeApis.DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO_2);
-                // header.size (offset 4, 4 octets)
                 Marshal.WriteInt32(buffer, 4, (int)taille);
-                // header.adapterId.LowPart (offset 8, 4 octets)
                 Marshal.WriteInt32(buffer, 8, (int)chemin.targetInfo.adapterId.LowPart);
-                // header.adapterId.HighPart (offset 12, 4 octets)
                 Marshal.WriteInt32(buffer, 12, chemin.targetInfo.adapterId.HighPart);
-                // header.id (offset 16, 4 octets)
                 Marshal.WriteInt32(buffer, 16, (int)chemin.targetInfo.id);
 
                 int résultat = NativeApis.DisplayConfigGetDeviceInfoRaw(buffer);
 
                 if (NativeApis.EstSuccès(résultat))
                 {
-                    // Lire les champs après le header (offset 20)
                     uint supportedColorInfo = (uint)Marshal.ReadInt32(buffer, 20);
                     uint activeColorMode = (uint)Marshal.ReadInt32(buffer, 24);
 
@@ -276,7 +297,6 @@ public class DisplayService
 
     /// <summary>
     /// Détection HDR via DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO (pré-Windows 24H2).
-    /// Utilise le champ advancedColorEnabled du bitfield.
     /// </summary>
     private bool DétecterHdrV1(
         NativeApis.DISPLAYCONFIG_PATH_INFO chemin,
@@ -301,10 +321,16 @@ public class DisplayService
             {
                 moniteur.HdrSupporté = requête.AdvancedColorSupported;
                 moniteur.EstHdrActif = requête.AdvancedColorEnabled;
-                _logger.Debug($"HDR v1 pour '{moniteur.NomConvivial}' : valueInfo=0x{requête.valueInfo:X8}, " +
-                    $"supporté={moniteur.HdrSupporté}, actif={moniteur.EstHdrActif}, " +
-                    $"wideColor={requête.WideColorEnforced}, forceDisabled={requête.AdvancedColorForceDisabled}, " +
-                    $"colorEncoding={requête.colorEncoding}, bitsPerChannel={requête.bitsPerColorChannel}");
+                // Log uniquement au premier appel ou si l'état HDR v1 change
+                string hdrV1Info = $"valueInfo=0x{requête.valueInfo:X8},supporté={moniteur.HdrSupporté},actif={moniteur.EstHdrActif}";
+                if (!_hdrV1DernierLog.TryGetValue(moniteur.TargetId, out string? dernierLog) || dernierLog != hdrV1Info)
+                {
+                    _logger.Debug($"HDR v1 pour '{moniteur.NomConvivial}' : valueInfo=0x{requête.valueInfo:X8}, " +
+                        $"supporté={moniteur.HdrSupporté}, actif={moniteur.EstHdrActif}, " +
+                        $"wideColor={requête.WideColorEnforced}, forceDisabled={requête.AdvancedColorForceDisabled}, " +
+                        $"colorEncoding={requête.colorEncoding}, bitsPerChannel={requête.bitsPerColorChannel}");
+                    _hdrV1DernierLog[moniteur.TargetId] = hdrV1Info;
+                }
                 return true;
             }
 
@@ -337,7 +363,6 @@ public class DisplayService
                 return profils;
             }
 
-            // Récupérer tous les fichiers .icc et .icm
             foreach (var extension in new[] { "*.icc", "*.icm" })
             {
                 var fichiers = Directory.GetFiles(RépertoireProfils, extension, SearchOption.TopDirectoryOnly);
@@ -360,7 +385,10 @@ public class DisplayService
 
     /// <summary>
     /// Applique un profil ICC ou SICC à un écran spécifique.
-    /// Utilise ColorProfileAddDisplayAssociation (mscms.dll).
+    ///
+    /// Mécanisme v4.1 (validé 05/04/2026) :
+    /// a) Méthode primaire : Remove + Add(default) + Re-add via ColorProfileAddDisplayAssociation avec LUID
+    /// b) Méthode fallback : écriture registre ICM (REG_MULTI_SZ, premier = actif)
     /// </summary>
     /// <param name="moniteur">L'écran cible.</param>
     /// <param name="nomProfil">Nom du fichier profil (ex: "HDR PEAK 1000.icc").</param>
@@ -374,110 +402,130 @@ public class DisplayService
             return false;
         }
 
+        _logger.Info($"Application du profil '{nomProfil}' sur '{moniteur.NomConvivial}' " +
+                     $"(HDR={estProfilHdr}, adapterId=0x{moniteur.AdapterId.LowPart:X8}:{moniteur.AdapterId.HighPart:X8}, sourceId={moniteur.SourceId})");
+
+        uint profileSubType = estProfilHdr
+            ? NativeApis.CPST_EXTENDED_DISPLAY_COLOR_MODE
+            : NativeApis.CPST_STANDARD_DISPLAY_COLOR_MODE;
+
+        // ============================================================
+        // MÉTHODE PRIMAIRE : API ColorProfile* (mscms.dll)
+        // Flow validé le 05/04/2026 (800 nits confirmé par NVIDIA app) :
+        //   1. Remove(ancien profil)
+        //   2. Add(nouveau profil, setAsDefault=true, advColor=estHdr)
+        //   3. Re-add(ancien profil, setAsDefault=false)
+        // Le LUID est un struct de 8 bytes obtenu via QueryDisplayConfig.
+        // ============================================================
+        bool succèsApi = false;
         try
         {
-            _logger.Info($"Application du profil '{nomProfil}' sur '{moniteur.NomConvivial}' " +
-                         $"(HDR={estProfilHdr}, sourceId={moniteur.SourceId})");
-
-            // Retirer l'ancien profil du même type (HDR ou SDR) s'il y en avait un
-            if (!string.IsNullOrEmpty(moniteur.ProfilActuelAppliqué) && moniteur.ProfilActuelAppliqué != nomProfil)
+            // Étape 1 : Retirer TOUS les autres profils du même type (nécessaire pour forcer le switch)
+            // On retire tous les profils HDR ou SDR connus sauf celui qu'on veut appliquer.
+            // Cela garantit que le switch fonctionne même au premier lancement (ProfilActuelAppliqué vide).
+            var profilsConnus = ListerProfilsInstallés();
+            foreach (var autreProfile in profilsConnus)
             {
+                if (autreProfile.Equals(nomProfil, StringComparison.OrdinalIgnoreCase))
+                    continue;
                 try
                 {
-                    int hrRetrait = NativeApis.ColorProfileRemoveDisplayAssociation(
+                    int hrRemove = NativeApis.ColorProfileRemoveDisplayAssociation(
                         scope: NativeApis.WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER,
-                        profileName: moniteur.ProfilActuelAppliqué,
+                        profileName: autreProfile,
                         targetAdapterID: moniteur.AdapterId,
                         sourceID: moniteur.SourceId,
                         dissociateAdvancedColor: estProfilHdr
                     );
-                    _logger.Debug($"Retrait ancien profil '{moniteur.ProfilActuelAppliqué}' : HRESULT=0x{hrRetrait:X8}");
+                    if (hrRemove == 0)
+                        _logger.Debug($"Remove '{autreProfile}' : OK");
                 }
-                catch (Exception exRetrait)
+                catch { /* ignorer les profils non associés */ }
+            }
+
+            // Étape 2 : Ajouter le nouveau profil comme défaut
+            int hrAdd = NativeApis.ColorProfileAddDisplayAssociation(
+                scope: NativeApis.WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER,
+                profileName: nomProfil,
+                targetAdapterID: moniteur.AdapterId,
+                sourceID: moniteur.SourceId,
+                setAsDefault: true,
+                associateAsAdvancedColor: estProfilHdr
+            );
+            _logger.Debug($"Add '{nomProfil}' (default=true, advColor={estProfilHdr}) : HR=0x{hrAdd:X8}");
+
+            succèsApi = (hrAdd == 0);
+
+            // Étape 3 : Re-ajouter les autres profils en non-défaut
+            if (succèsApi)
+            {
+                foreach (var autreProfile in profilsConnus)
                 {
-                    _logger.Debug($"Retrait ancien profil ignoré : {exRetrait.Message}");
+                    if (autreProfile.Equals(nomProfil, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    try
+                    {
+                        NativeApis.ColorProfileAddDisplayAssociation(
+                            scope: NativeApis.WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER,
+                            profileName: autreProfile,
+                            targetAdapterID: moniteur.AdapterId,
+                            sourceID: moniteur.SourceId,
+                            setAsDefault: false,
+                            associateAsAdvancedColor: estProfilHdr
+                        );
+                    }
+                    catch { /* ignorer */ }
                 }
             }
 
-            // ============================================================
-            // MÉTHODE REGISTRE DIRECTE (Plan C — confirmé par diff reg 04/04/2026)
-            // L'UI Windows Settings stocke le profil actif comme 1er élément
-            // d'un REG_MULTI_SZ dans :
-            //   HKCU\...\ICM\ProfileAssociations\Display\{GUID}\XXXX
-            //   → ICMProfileAC (HDR) ou ICMProfile (SDR)
-            // ============================================================
-            string valeurReg = estProfilHdr ? "ICMProfileAC" : "ICMProfile";
-            bool succèsRegistre = RéordonnerProfilRegistre(nomProfil, valeurReg);
-
-            // Aussi appeler les API mscms en backup (elles ne font rien de visible
-            // mais maintiennent la cohérence interne du WCS)
-            try
-            {
-                NativeApis.ColorProfileAddDisplayAssociation(
-                    scope: NativeApis.WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER,
-                    profileName: nomProfil,
-                    targetAdapterID: moniteur.AdapterId,
-                    sourceID: moniteur.SourceId,
-                    setAsDefault: true,
-                    associateAsAdvancedColor: estProfilHdr
-                );
-                NativeApis.ColorProfileSetDisplayDefaultAssociation(
-                    scope: NativeApis.WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER,
-                    profileName: nomProfil,
-                    profileType: NativeApis.CPT_ICC,
-                    profileSubType: estProfilHdr
-                        ? NativeApis.CPST_EXTENDED_DISPLAY_COLOR_MODE
-                        : NativeApis.CPST_STANDARD_DISPLAY_COLOR_MODE,
-                    targetAdapterID: moniteur.AdapterId,
-                    sourceID: moniteur.SourceId
-                );
-            }
-            catch (Exception exApi)
-            {
-                _logger.Debug($"API mscms backup ignorée : {exApi.Message}");
-            }
-
-            if (succèsRegistre)
-            {
-                moniteur.ProfilActuelAppliqué = nomProfil;
-                _logger.Info($"✅ Profil '{nomProfil}' défini comme défaut {(estProfilHdr ? "HDR" : "SDR")} " +
-                             $"sur '{moniteur.NomConvivial}' (via registre)");
-
-                // ============================================================
-                // NOTIFICATION — Forcer Windows à relire le registre ICM
-                // (en arrière-plan pour ne pas bloquer le thread UI)
-                // ============================================================
-                System.Threading.Tasks.Task.Run(() => NotifierChangementProfil(moniteur, nomProfil));
-            }
+            if (succèsApi)
+                _logger.Info($"✅ Profil appliqué via API : '{nomProfil}' {(estProfilHdr ? "HDR" : "SDR")} sur '{moniteur.NomConvivial}'");
             else
-            {
-                _logger.Erreur($"❌ Échec registre pour '{nomProfil}' sur '{moniteur.NomConvivial}'");
-
-                var cheminComplet = Path.Combine(RépertoireProfils, nomProfil);
-                if (!File.Exists(cheminComplet))
-                    _logger.Avertissement($"Le fichier profil '{nomProfil}' n'existe pas dans {RépertoireProfils}");
-            }
-
-            return succèsRegistre;
+                _logger.Avertissement($"API Add a échoué HR=0x{hrAdd:X8}, passage au fallback registre.");
         }
         catch (DllNotFoundException)
         {
-            _logger.Erreur("mscms.dll introuvable — ColorProfileAddDisplayAssociation non disponible. " +
-                           "Nécessite Windows 10 Build 20348+ ou Windows 11.");
-            return false;
+            _logger.Avertissement("mscms.dll indisponible, passage au fallback registre.");
         }
         catch (Exception ex)
         {
-            _logger.Erreur($"Exception lors de l'application du profil '{nomProfil}'", ex);
-            return false;
+            _logger.Avertissement($"API primaire exception : {ex.Message}, passage au fallback registre.");
         }
+
+        // ============================================================
+        // MÉTHODE FALLBACK : Registre ICM direct
+        // HKCU\...\ICM\ProfileAssociations\Display\{GUID}\XXXX
+        //   ICMProfileAC (HDR) ou ICMProfile (SDR)
+        // Windows lit le 1er élément du REG_MULTI_SZ comme profil actif.
+        // ============================================================
+        bool succèsRegistre = succèsApi; // si API ok, pas besoin du registre en plus
+        if (!succèsApi)
+        {
+            string valeurReg = estProfilHdr ? "ICMProfileAC" : "ICMProfile";
+            succèsRegistre = RéordonnerProfilRegistre(nomProfil, valeurReg);
+
+            if (succèsRegistre)
+                _logger.Info($"✅ Fallback registre réussi : '{nomProfil}' en première position de '{valeurReg}'");
+            else
+            {
+                _logger.Erreur($"❌ Échec registre pour '{nomProfil}' sur '{moniteur.NomConvivial}'");
+                var cheminComplet = Path.Combine(RépertoireProfils, nomProfil);
+                if (!File.Exists(cheminComplet))
+                    _logger.Avertissement($"Fichier profil '{nomProfil}' absent de {RépertoireProfils}");
+            }
+        }
+
+        if (succèsApi || succèsRegistre)
+        {
+            moniteur.ProfilActuelAppliqué = nomProfil;
+        }
+
+        return succèsApi || succèsRegistre;
     }
 
     /// <summary>
     /// Applique automatiquement le bon profil à un écran selon son état HDR/SDR.
-    /// Utilise la configuration associée à cet écran.
     /// </summary>
-    /// <returns>true si un profil a été appliqué avec succès.</returns>
     public bool AppliquerProfilAutomatique(DisplayMonitor moniteur)
     {
         if (moniteur.ConfigAssociée == null)
@@ -500,157 +548,7 @@ public class DisplayService
     }
 
     // =========================================================================
-    // NOTIFICATION — Forcer Windows à appliquer le changement de profil
-    // =========================================================================
-
-    // =========================================================================
-    // WINRT COM ACTIVATION — Appel direct à DisplayColorManagement.dll
-    // =========================================================================
-
-    [DllImport("combase.dll", PreserveSig = false)]
-    private static extern void RoGetActivationFactory(
-        IntPtr activatableClassId,
-        [In] ref Guid iid,
-        out IntPtr factory
-    );
-
-    [DllImport("combase.dll", PreserveSig = false)]
-    private static extern void WindowsCreateString(
-        [MarshalAs(UnmanagedType.LPWStr)] string sourceString,
-        uint length,
-        out IntPtr hstring
-    );
-
-    [DllImport("combase.dll")]
-    private static extern void WindowsDeleteString(IntPtr hstring);
-
-    [DllImport("combase.dll")]
-    private static extern int RoInitialize(int type);
-
-    /// <summary>
-    /// Après l'écriture dans le registre, notifie le pipeline couleur Windows.
-    /// Stratégie multi-couches :
-    /// 1. Tente d'activer la factory WinRT DisplayColorManagement (comme fait Settings)
-    /// 2. En fallback, utilise WcsSetDefaultColorProfile + broadcasts
-    /// </summary>
-    private void NotifierChangementProfil(DisplayMonitor moniteur, string nomProfil)
-    {
-        try
-        {
-            // Initialiser WinRT (MTA)
-            RoInitialize(1); // RO_INIT_MULTITHREADED
-
-            // 1) Tenter d'activer le serveur DisplayColorManagement
-            //    C'est ce que fait SystemSettings.exe quand il charge la DLL
-            string className = "Windows.Internal.Graphics.Display.DisplayColorManagement.DisplayColorManagementServer";
-            IntPtr hClassName = IntPtr.Zero;
-            try
-            {
-                WindowsCreateString(className, (uint)className.Length, out hClassName);
-
-                // IActivationFactory GUID = {00000035-0000-0000-C000-000000000046}
-                Guid iidActivationFactory = new Guid("00000035-0000-0000-C000-000000000046");
-
-                try
-                {
-                    RoGetActivationFactory(hClassName, ref iidActivationFactory, out IntPtr factory);
-                    _logger.Info($"✅ WinRT DisplayColorManagementServer activé ! (factory=0x{factory:X})");
-
-                    // Le simple fait d'activer la factory peut déclencher
-                    // le rechargement des profils depuis le registre.
-                    // On libère proprement
-                    if (factory != IntPtr.Zero)
-                        Marshal.Release(factory);
-                }
-                catch (Exception exWinRT)
-                {
-                    _logger.Debug($"WinRT activation échouée (attendu si pas admin) : {exWinRT.Message}");
-                }
-            }
-            finally
-            {
-                if (hClassName != IntPtr.Zero)
-                    WindowsDeleteString(hClassName);
-            }
-
-            // 2) Aussi essayer DisplayColorManagement (pas Server)
-            string className2 = "Windows.Internal.Graphics.Display.DisplayColorManagement.DisplayColorManagement";
-            IntPtr hClassName2 = IntPtr.Zero;
-            try
-            {
-                WindowsCreateString(className2, (uint)className2.Length, out hClassName2);
-                Guid iidActivationFactory = new Guid("00000035-0000-0000-C000-000000000046");
-
-                try
-                {
-                    RoGetActivationFactory(hClassName2, ref iidActivationFactory, out IntPtr factory2);
-                    _logger.Info($"✅ WinRT DisplayColorManagement activé ! (factory=0x{factory2:X})");
-                    if (factory2 != IntPtr.Zero)
-                        Marshal.Release(factory2);
-                }
-                catch (Exception exWinRT2)
-                {
-                    _logger.Debug($"WinRT DCM activation échouée : {exWinRT2.Message}");
-                }
-            }
-            finally
-            {
-                if (hClassName2 != IntPtr.Zero)
-                    WindowsDeleteString(hClassName2);
-            }
-
-            // 3) SetDisplayConfig — force Windows à re-appliquer la config
-            //    depuis sa base interne (qui inclut les profils du registre)
-            _logger.Debug("Tentative SetDisplayConfig(SDC_APPLY | SDC_USE_DATABASE_CURRENT)...");
-            int sdc = NativeApis.SetDisplayConfig(0, IntPtr.Zero, 0, IntPtr.Zero,
-                NativeApis.SDC_APPLY | NativeApis.SDC_USE_DATABASE_CURRENT);
-            _logger.Info($"SetDisplayConfig : code retour = {sdc} (0=succès)");
-
-            // 4) Fallback : WcsSetDefaultColorProfile + broadcasts
-            string cheminProfil = Path.Combine(RépertoireProfils, nomProfil);
-            string deviceName = $"\\\\.\\DISPLAY{moniteur.SourceId + 1}";
-
-            bool wcsResult = NativeApis.WcsSetDefaultColorProfile(
-                scope: NativeApis.WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER,
-                pDeviceName: deviceName,
-                cptColorProfileType: NativeApis.COLORPROFILETYPE_ICC,
-                cpstColorProfileSubType: NativeApis.COLORPROFILESUBTYPE_NONE,
-                dwProfileID: 0,
-                pProfileName: cheminProfil
-            );
-            _logger.Debug($"WcsSetDefaultColorProfile('{deviceName}') : résultat={wcsResult}");
-
-            // Broadcasts
-            NativeApis.SendMessageTimeout(
-                NativeApis.HWND_BROADCAST,
-                NativeApis.WM_SETTINGCHANGE,
-                IntPtr.Zero,
-                "ImmersiveColorSet",
-                NativeApis.SMTO_ABORTIFHUNG,
-                2000,
-                out _
-            );
-            _logger.Debug("Broadcast 'ImmersiveColorSet' envoyé.");
-
-            NativeApis.SendMessageTimeout(
-                NativeApis.HWND_BROADCAST,
-                NativeApis.WM_SETTINGCHANGE,
-                IntPtr.Zero,
-                "WindowsColorSystem",
-                NativeApis.SMTO_ABORTIFHUNG,
-                2000,
-                out _
-            );
-            _logger.Debug("Broadcast 'WindowsColorSystem' envoyé.");
-        }
-        catch (Exception ex)
-        {
-            _logger.Erreur($"Erreur notification changement profil : {ex.Message}");
-        }
-    }
-
-    // =========================================================================
-    // REGISTRE — Réordonnement du profil actif (Plan C)
+    // REGISTRE — Réordonnement du profil actif (fallback)
     // =========================================================================
 
     /// <summary>
@@ -663,9 +561,9 @@ public class DisplayService
     /// <summary>
     /// Parcourt toutes les sous-clés registre ICM et réordonne le REG_MULTI_SZ
     /// pour mettre le profil demandé en premier (= actif pour Windows).
-    /// ProcMon a confirmé que Windows Settings écrit UNIQUEMENT dans la sous-clé
-    /// correspondant à l'écran actif. On écrit dans TOUTES les sous-clés qui
-    /// contiennent le profil, comme avant.
+    ///
+    /// ICMProfileAC = liste profils HDR (premier = actif)
+    /// ICMProfile   = liste profils SDR (premier = actif)
     /// </summary>
     private bool RéordonnerProfilRegistre(string nomProfil, string nomValeur)
     {
@@ -748,19 +646,22 @@ public class DisplayService
 
     /// <summary>
     /// Interroge Windows pour connaître le profil par défaut actuel d'un écran
-    /// pour TOUS les subtypes possibles (0 à 20 + bitflags).
-    /// Log les changements détectés.
+    /// pour les subtypes SDR (7) et HDR (8). Log les changements détectés.
     /// </summary>
     public void EspionnerProfilsActifs(DisplayMonitor moniteur)
     {
-        // Seuls les subtypes pertinents : 7 = SDR, 8 = HDR (confirmé par espionnage v1.9)
+        // DÉSACTIVÉ v4.1 — ColorProfileGetDisplayDefault retourne des données corrompues
+        // (caractères coréens/chinois dans le StringBuilder). Non nécessaire :
+        // la détection HDR/SDR via DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO fonctionne parfaitement.
+        return;
+
+        // Subtypes pertinents : 7 = SDR, 8 = HDR (confirmé par espionnage v1.9)
         uint[] subtypesATester = { 7, 8 };
 
         foreach (uint subType in subtypesATester)
         {
             try
             {
-                // Allouer un buffer large (512 chars = 1024 octets) d'un coup
                 uint bufferSize = 512;
                 var sb = new System.Text.StringBuilder((int)bufferSize);
                 int hr = NativeApis.ColorProfileGetDisplayDefault(
@@ -775,7 +676,6 @@ public class DisplayService
 
                 string clé = $"{moniteur.SourceId}:{subType}";
                 string profilActuel = (hr == 0 && sb.Length > 0) ? sb.ToString() : "";
-
                 string label = subType == 7 ? "SDR" : "HDR";
 
                 if (_derniersProfilsConnus.TryGetValue(clé, out string? ancien))
@@ -809,7 +709,7 @@ public class DisplayService
     {
         foreach (var moniteur in moniteurs)
         {
-            moniteur.ConfigAssociée = null; // Réinitialiser
+            moniteur.ConfigAssociée = null;
 
             foreach (var configÉcran in config.Écrans)
             {
@@ -821,7 +721,12 @@ public class DisplayService
                     StringComparison.OrdinalIgnoreCase))
                 {
                     moniteur.ConfigAssociée = configÉcran;
-                    _logger.Info($"Configuration associée : '{moniteur.NomConvivial}' → '{configÉcran.Nom}' (lettre: {configÉcran.Lettre})");
+                    // Log uniquement si l'association a changé (évite le spam de polling)
+                    if (!_dernièresAssociations.TryGetValue(moniteur.NomConvivial, out string? dernièreAssoc) || dernièreAssoc != configÉcran.Nom)
+                    {
+                        _logger.Info($"Configuration associée : '{moniteur.NomConvivial}' → '{configÉcran.Nom}' (lettre: {configÉcran.Lettre})");
+                        _dernièresAssociations[moniteur.NomConvivial] = configÉcran.Nom;
+                    }
                     break;
                 }
             }

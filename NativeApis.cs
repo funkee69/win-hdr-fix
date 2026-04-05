@@ -6,6 +6,7 @@ namespace HdrProfileSwitcher;
 /// <summary>
 /// Toutes les définitions P/Invoke, structs et constantes pour les APIs Windows natives.
 /// Sources : user32.dll (DisplayConfig), mscms.dll (gestion profils couleur).
+/// v4.0 : code mort supprimé (WinRT, SetDisplayConfig, broadcasts).
 /// </summary>
 public static class NativeApis
 {
@@ -28,9 +29,6 @@ public static class NativeApis
     /// <summary>Type d'info : nom de l'adaptateur (GPU).</summary>
     public const uint DISPLAYCONFIG_DEVICE_INFO_GET_ADAPTER_NAME = 4;
 
-    /// <summary>Type d'info : activer/désactiver le mode couleur avancée (HDR).</summary>
-    public const uint DISPLAYCONFIG_DEVICE_INFO_SET_ADVANCED_COLOR_STATE = 10;
-
     // Constantes pour le mode couleur avancé (version 2 — Windows 24H2+)
     public const uint DISPLAYCONFIG_ADVANCED_COLOR_MODE_SDR = 0;
     public const uint DISPLAYCONFIG_ADVANCED_COLOR_MODE_WCG = 1;
@@ -42,16 +40,26 @@ public static class NativeApis
     // =========================================================================
 
     /// <summary>Scope utilisateur courant (pas besoin d'admin).</summary>
-    public const uint WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER = 0;
+    public const uint WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER = 1;
 
     /// <summary>Scope système (nécessite admin).</summary>
-    public const uint WCS_PROFILE_MANAGEMENT_SCOPE_SYSTEM_WIDE = 1;
+    public const uint WCS_PROFILE_MANAGEMENT_SCOPE_SYSTEM_WIDE = 0;
+
+    /// <summary>Type de profil ICC.</summary>
+    public const uint CPT_ICC = 1;
+
+    // Enum COLORPROFILESUBTYPE confirmé par espionnage v1.9 (04/04/2026)
+    // 0=PERCEPTUAL, 1=REL_COLORIMETRIC, 2=SATURATION, 3=ABS_COLORIMETRIC,
+    // 4=NONE, 5=RGB_WORKING_SPACE, 6=CUSTOM_WORKING_SPACE,
+    // 7=STANDARD_DISPLAY_COLOR_MODE, 8=EXTENDED_DISPLAY_COLOR_MODE
+    public const uint CPST_STANDARD_DISPLAY_COLOR_MODE = 7;     // SDR
+    public const uint CPST_EXTENDED_DISPLAY_COLOR_MODE = 8;     // HDR / Advanced Color
 
     // =========================================================================
     // STRUCTS DisplayConfig
     // =========================================================================
 
-    /// <summary>Identifiant local unique (LUID) — identifie le GPU/adaptateur.</summary>
+    /// <summary>Identifiant local unique (LUID) — identifie le GPU/adaptateur. 8 octets.</summary>
     [StructLayout(LayoutKind.Sequential)]
     public struct LUID
     {
@@ -245,51 +253,17 @@ public static class NativeApis
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = false, EntryPoint = "DisplayConfigGetDeviceInfo")]
     public static extern int DisplayConfigGetDeviceInfoRaw(IntPtr requestPacket);
 
-    /// <summary>Applique une modification de configuration d'affichage (ex: toggle HDR).</summary>
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = false)]
-    public static extern int DisplayConfigSetDeviceInfo(IntPtr setPacket);
-
-    /// <summary>Applique une configuration d'affichage. Avec SDC_APPLY | SDC_USE_DATABASE_CURRENT,
-    /// force Windows à re-appliquer la config actuelle depuis sa base interne.</summary>
-    [DllImport("user32.dll")]
-    public static extern int SetDisplayConfig(
-        uint numPathArrayElements,
-        IntPtr pathArray,
-        uint numModeInfoArrayElements,
-        IntPtr modeInfoArray,
-        uint flags
-    );
-
-    // SetDisplayConfig flags
-    public const uint SDC_APPLY = 0x00000080;
-    public const uint SDC_USE_DATABASE_CURRENT = 0x0000000F;
-    public const uint SDC_NO_OPTIMIZATION = 0x00000100;
-    public const uint SDC_SAVE_TO_DATABASE = 0x00000200;
-    public const uint SDC_ALLOW_CHANGES = 0x00000400;
-    public const uint SDC_TOPOLOGY_INTERNAL = 0x00000001;
-    public const uint SDC_TOPOLOGY_CLONE = 0x00000002;
-    public const uint SDC_TOPOLOGY_EXTEND = 0x00000004;
-    public const uint SDC_TOPOLOGY_EXTERNAL = 0x00000008;
-    public const uint SDC_TOPOLOGY_SUPPLIED = 0x00000010;
-    public const uint SDC_USE_SUPPLIED_DISPLAY_CONFIG = 0x00000020;
-    public const uint SDC_VALIDATE = 0x00000040;
-    public const uint SDC_PATH_PERSIST_IF_REQUIRED = 0x00000800;
-    public const uint SDC_FORCE_MODE_ENUMERATION = 0x00001000;
-    public const uint SDC_ALLOW_PATH_ORDER_CHANGES = 0x00002000;
-    public const uint SDC_VIRTUAL_MODE_AWARE = 0x00008000;
-    public const uint SDC_VIRTUAL_REFRESH_RATE_AWARE = 0x00020000;
-
     // =========================================================================
     // P/INVOKE — mscms.dll (Color Management System)
     // =========================================================================
 
     /// <summary>
-    /// Associe un profil ICC/SICC à un affichage spécifique.
-    /// Requiert Windows 10 Build 20348+ (Windows Server 2022) ou Windows 11.
+    /// Associe un profil ICC/SICC à un affichage spécifique et peut le définir comme défaut.
+    /// Le LUID targetAdapterID est un struct de 8 bytes obtenu via QueryDisplayConfig.
     /// </summary>
-    /// <param name="scope">Portée : utilisateur courant ou système.</param>
+    /// <param name="scope">Portée : WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER (1).</param>
     /// <param name="profileName">Nom du fichier profil (ex: "HDR PEAK 1000.icc").</param>
-    /// <param name="targetAdapterID">LUID de l'adaptateur GPU.</param>
+    /// <param name="targetAdapterID">LUID struct de l'adaptateur GPU (obtenu via QueryDisplayConfig).</param>
     /// <param name="sourceID">Identifiant de la source d'affichage.</param>
     /// <param name="setAsDefault">Définir comme profil par défaut.</param>
     /// <param name="associateAsAdvancedColor">true pour HDR/SICC, false pour SDR/ICC.</param>
@@ -304,20 +278,10 @@ public static class NativeApis
     );
 
     /// <summary>
-    /// Supprime l'association d'un profil ICC/SICC d'un affichage.
-    /// </summary>
-    // Constantes COLORPROFILETYPE et COLORPROFILESUBTYPE
-    public const uint CPT_ICC = 1;
-    // Enum séquentiel confirmé par espionnage v1.9 (04/04/2026)
-    // 0=PERCEPTUAL, 1=REL_COLORIMETRIC, 2=SATURATION, 3=ABS_COLORIMETRIC,
-    // 4=NONE, 5=RGB_WORKING_SPACE, 6=CUSTOM_WORKING_SPACE,
-    // 7=STANDARD_DISPLAY_COLOR_MODE, 8=EXTENDED_DISPLAY_COLOR_MODE
-    public const uint CPST_STANDARD_DISPLAY_COLOR_MODE = 7;     // SDR
-    public const uint CPST_EXTENDED_DISPLAY_COLOR_MODE = 8;     // HDR / Advanced Color
-
-    /// <summary>
     /// Définit un profil installé comme profil PAR DÉFAUT pour un écran.
     /// C'est cette API qui force réellement le changement (pas juste l'ajout à la liste).
+    /// Le LUID targetAdapterID est un struct de 8 bytes obtenu via QueryDisplayConfig.
+    /// Signature validée (MSDN) : scope, profileName, profileType, profileSubType, adapterId, sourceID.
     /// </summary>
     [DllImport("mscms.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern int ColorProfileSetDisplayDefaultAssociation(
@@ -329,6 +293,9 @@ public static class NativeApis
         uint sourceID
     );
 
+    /// <summary>
+    /// Supprime l'association d'un profil ICC/SICC d'un affichage.
+    /// </summary>
     [DllImport("mscms.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern int ColorProfileRemoveDisplayAssociation(
         uint scope,
@@ -339,22 +306,7 @@ public static class NativeApis
     );
 
     /// <summary>
-    /// Récupère le profil couleur par défaut associé à un périphérique d'affichage.
-    /// </summary>
-    [DllImport("mscms.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool WcsGetDefaultColorProfileSize(
-        uint scope,
-        [MarshalAs(UnmanagedType.LPWStr)] string? pDeviceName,
-        uint dwProfileType,
-        uint dwProfileID,
-        uint dwProfileMode,
-        out uint pcbProfileName
-    );
-
-    /// <summary>
     /// Récupère le nom du profil par défaut pour un écran et un subtype donné.
-    /// C'est la lecture inverse de SetDisplayDefaultAssociation.
     /// </summary>
     [DllImport("mscms.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern int ColorProfileGetDisplayDefault(
@@ -366,66 +318,6 @@ public static class NativeApis
         [Out, MarshalAs(UnmanagedType.LPWStr)] System.Text.StringBuilder? profileName,
         ref uint profileNameSize
     );
-
-    /// <summary>
-    /// Récupère la liste des profils associés à un écran.
-    /// </summary>
-    [DllImport("mscms.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern int ColorProfileGetDisplayList(
-        uint scope,
-        LUID targetAdapterID,
-        uint sourceID,
-        [Out] IntPtr profileList,
-        ref uint profileCount
-    );
-
-    // =========================================================================
-    // NOTIFICATION — Forcer Windows à relire le registre ICM
-    // =========================================================================
-
-    public static readonly IntPtr HWND_BROADCAST = new IntPtr(0xffff);
-    public const uint WM_SETTINGCHANGE = 0x001A;
-    public const uint WM_DISPLAYCHANGE = 0x007E;
-    public const uint SMTO_ABORTIFHUNG = 0x0002;
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern IntPtr SendMessageTimeout(
-        IntPtr hWnd,
-        uint Msg,
-        IntPtr wParam,
-        string? lParam,
-        uint fuFlags,
-        uint uTimeout,
-        out IntPtr lpdwResult
-    );
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool PostMessage(
-        IntPtr hWnd,
-        uint Msg,
-        IntPtr wParam,
-        IntPtr lParam
-    );
-
-    /// <summary>
-    /// Ancienne API WCS : définit le profil par défaut via device name (\\.\DISPLAY1).
-    /// Peut déclencher le rafraîchissement interne que les nouvelles API ne font pas.
-    /// </summary>
-    [DllImport("mscms.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool WcsSetDefaultColorProfile(
-        uint scope,
-        [MarshalAs(UnmanagedType.LPWStr)] string? pDeviceName,
-        uint cptColorProfileType,
-        uint cpstColorProfileSubType,
-        uint dwProfileID,
-        [MarshalAs(UnmanagedType.LPWStr)] string pProfileName
-    );
-
-    // WcsSetDefaultColorProfile constants
-    public const uint COLORPROFILETYPE_ICC = 1;  // ICC profile
-    public const uint COLORPROFILESUBTYPE_NONE = 4;  // CPST_NONE
 
     // =========================================================================
     // CODES D'ERREUR Windows

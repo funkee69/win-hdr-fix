@@ -9,14 +9,15 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefaultItemExcludes>$(DefaultItemExcludes);TargetProbe/**;TargetProbe2/**;TargetProbe3/**;TargetProbe4/**;TargetProbe5/**;TargetProbe6/**;TargetProbe7/**;TargetProbe8/**;WinmdDump/**;DllMetaDump/**;ReadOnly/**;SwitchProbe/**;SwitchProbe2/**;CleanTest/**</DefaultItemExcludes>
 
     <!-- Métadonnées de l'application -->
     <AssemblyName>HdrProfileSwitcher</AssemblyName>
     <RootNamespace>HdrProfileSwitcher</RootNamespace>
     <AssemblyTitle>HDR Profile Switcher</AssemblyTitle>
     <AssemblyDescription>Basculement automatique des profils ICC/HDR selon l'écran actif</AssemblyDescription>
-    <AssemblyVersion>3.3.0.0</AssemblyVersion>
-    <FileVersion>3.3.0.0</FileVersion>
+    <AssemblyVersion>4.1.0.0</AssemblyVersion>
+    <FileVersion>4.1.0.0</FileVersion>
     <Company>Colin Golberg</Company>
     <Copyright>Copyright © 2026</Copyright>
 
@@ -42,6 +43,52 @@
     <Compile Update="ConfigForm.cs">
       <SubType>Form</SubType>
     </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Exclure TOUS les sous-projets de test/exploration (TargetProbe*, WinmdDump, DllMetaDump) -->
+    <Compile Remove="TargetProbe/**" />
+    <Compile Remove="TargetProbe2/**" />
+    <Compile Remove="TargetProbe3/**" />
+    <Compile Remove="TargetProbe4/**" />
+    <Compile Remove="TargetProbe5/**" />
+    <Compile Remove="TargetProbe6/**" />
+    <Compile Remove="TargetProbe7/**" />
+    <Compile Remove="TargetProbe8/**" />
+    <Compile Remove="WinmdDump/**" />
+    <Compile Remove="DllMetaDump/**" />
+    <Compile Remove="ReadOnly/**" />
+    <Compile Remove="SwitchProbe/**" />
+    <Compile Remove="SwitchProbe2/**" />
+    <Compile Remove="CleanTest/**" />
+    <EmbeddedResource Remove="TargetProbe/**" />
+    <EmbeddedResource Remove="TargetProbe2/**" />
+    <EmbeddedResource Remove="TargetProbe3/**" />
+    <EmbeddedResource Remove="TargetProbe4/**" />
+    <EmbeddedResource Remove="TargetProbe5/**" />
+    <EmbeddedResource Remove="TargetProbe6/**" />
+    <EmbeddedResource Remove="TargetProbe7/**" />
+    <EmbeddedResource Remove="TargetProbe8/**" />
+    <EmbeddedResource Remove="WinmdDump/**" />
+    <EmbeddedResource Remove="DllMetaDump/**" />
+    <EmbeddedResource Remove="ReadOnly/**" />
+    <EmbeddedResource Remove="SwitchProbe/**" />
+    <EmbeddedResource Remove="SwitchProbe2/**" />
+    <EmbeddedResource Remove="CleanTest/**" />
+    <None Remove="TargetProbe/**" />
+    <None Remove="TargetProbe2/**" />
+    <None Remove="TargetProbe3/**" />
+    <None Remove="TargetProbe4/**" />
+    <None Remove="TargetProbe5/**" />
+    <None Remove="TargetProbe6/**" />
+    <None Remove="TargetProbe7/**" />
+    <None Remove="TargetProbe8/**" />
+    <None Remove="WinmdDump/**" />
+    <None Remove="DllMetaDump/**" />
+    <None Remove="ReadOnly/**" />
+    <None Remove="SwitchProbe/**" />
+    <None Remove="SwitchProbe2/**" />
+    <None Remove="CleanTest/**" />
   </ItemGroup>
 
 </Project>
