@@ -16,8 +16,8 @@
     <RootNamespace>HdrProfileSwitcher</RootNamespace>
     <AssemblyTitle>HDR Profile Switcher</AssemblyTitle>
     <AssemblyDescription>Basculement automatique des profils ICC/HDR selon l'écran actif</AssemblyDescription>
-    <AssemblyVersion>4.1.0.0</AssemblyVersion>
-    <FileVersion>4.1.0.0</FileVersion>
+    <AssemblyVersion>4.2.0.0</AssemblyVersion>
+    <FileVersion>4.2.0.0</FileVersion>
     <Company>Colin Golberg</Company>
     <Copyright>Copyright © 2026</Copyright>
 

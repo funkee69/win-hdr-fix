@@ -30,7 +30,7 @@ public sealed class ConfigForm : Form
         _écransDétectés = écransDétectés;
         _profilsDisponibles = _displayService.ListerProfilsInstallés();
 
-        Text = "Configuration — HDR Profile Switcher";
+        Text = Strings.ConfigTitle;
         StartPosition = FormStartPosition.CenterScreen;
         Width = 960;
         Height = 540;
@@ -53,7 +53,7 @@ public sealed class ConfigForm : Form
         {
             AutoSize = true,
             Dock = DockStyle.Fill,
-            Text = "Associez chaque écran détecté à un profil SDR et/ou HDR. Les profils proviennent de C:\\Windows\\System32\\spool\\drivers\\color\\.",
+            Text = Strings.ConfigIntro,
             Margin = new Padding(3, 3, 3, 12)
         };
         conteneur.Controls.Add(labelIntro, 0, 0);
@@ -84,9 +84,9 @@ public sealed class ConfigForm : Form
             Padding = new Padding(0, 12, 0, 0)
         };
 
-        _boutonEnregistrer = new Button { Text = "Enregistrer", AutoSize = true, MinimumSize = new Size(110, 32) };
-        _boutonAnnuler = new Button { Text = "Annuler", AutoSize = true, MinimumSize = new Size(110, 32) };
-        _caseDémarrageAuto = new CheckBox { Text = "Démarrer avec Windows", AutoSize = true, Checked = _config.DémarrageAuto, Margin = new Padding(0, 7, 24, 0) };
+        _boutonEnregistrer = new Button { Text = Strings.ConfigSave, AutoSize = true, MinimumSize = new Size(110, 32) };
+        _boutonAnnuler = new Button { Text = Strings.ConfigCancel, AutoSize = true, MinimumSize = new Size(110, 32) };
+        _caseDémarrageAuto = new CheckBox { Text = Strings.ConfigStartWithWindows, AutoSize = true, Checked = _config.DémarrageAuto, Margin = new Padding(0, 7, 24, 0) };
 
         _boutonEnregistrer.Click += (_, _) => Enregistrer();
         _boutonAnnuler.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
@@ -100,11 +100,11 @@ public sealed class ConfigForm : Form
 
     private void AjouterEntêtes()
     {
-        AjouterCelluleEntête("Écran détecté", 0);
-        AjouterCelluleEntête("Profil SDR", 1);
-        AjouterCelluleEntête("Profil HDR", 2);
-        AjouterCelluleEntête("Lettre", 3);
-        AjouterCelluleEntête("Motif de recherche", 4);
+        AjouterCelluleEntête(Strings.ConfigDetectedDisplay, 0);
+        AjouterCelluleEntête(Strings.ConfigSdrProfile, 1);
+        AjouterCelluleEntête(Strings.ConfigHdrProfile, 2);
+        AjouterCelluleEntête(Strings.ConfigLetter, 3);
+        AjouterCelluleEntête(Strings.ConfigSearchPattern, 4);
     }
 
     private void AjouterCelluleEntête(string texte, int colonne)
@@ -180,14 +180,14 @@ public sealed class ConfigForm : Form
             Margin = new Padding(6)
         };
 
-        combo.Items.Add("Aucun");
+        combo.Items.Add(Strings.ConfigNone);
         foreach (var profil in _profilsDisponibles)
         {
             combo.Items.Add(profil);
         }
 
-        var cible = string.IsNullOrWhiteSpace(valeur) ? "Aucun" : valeur;
-        combo.SelectedItem = combo.Items.Cast<object>().FirstOrDefault(x => string.Equals(x?.ToString(), cible, StringComparison.OrdinalIgnoreCase)) ?? "Aucun";
+        var cible = string.IsNullOrWhiteSpace(valeur) ? Strings.ConfigNone : valeur;
+        combo.SelectedItem = combo.Items.Cast<object>().FirstOrDefault(x => string.Equals(x?.ToString(), cible, StringComparison.OrdinalIgnoreCase)) ?? Strings.ConfigNone;
         return combo;
     }
 
@@ -203,7 +203,7 @@ public sealed class ConfigForm : Form
                 if (string.IsNullOrWhiteSpace(motif))
                 {
                     MessageBox.Show(
-                        $"Le motif de recherche est obligatoire pour l'écran '{ligne.NomÉcran}'.",
+                        Strings.ConfigPatternRequired(ligne.NomÉcran),
                         "Validation",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning);
@@ -211,8 +211,8 @@ public sealed class ConfigForm : Form
                 }
 
                 var lettre = string.IsNullOrWhiteSpace(ligne.TexteLettre.Text) ? "?" : ligne.TexteLettre.Text.Trim()[0].ToString().ToUpperInvariant();
-                var profilSdr = ConvertirSélectionProfil(ligne.ComboSdr.SelectedItem?.ToString());
-                var profilHdr = ConvertirSélectionProfil(ligne.ComboHdr.SelectedItem?.ToString());
+                var profilSdr = ConvertirSélectionProfil(ligne.ComboSdr.SelectedItem?.ToString(), Strings.ConfigNone);
+                var profilHdr = ConvertirSélectionProfil(ligne.ComboHdr.SelectedItem?.ToString(), Strings.ConfigNone);
 
                 nouvellesLignes.Add(new ConfigurationÉcran
                 {
@@ -242,9 +242,9 @@ public sealed class ConfigForm : Form
         }
     }
 
-    private static string? ConvertirSélectionProfil(string? valeur)
+    private static string? ConvertirSélectionProfil(string? valeur, string noneLabel)
     {
-        return string.Equals(valeur, "Aucun", StringComparison.OrdinalIgnoreCase) ? null : valeur;
+        return string.Equals(valeur, noneLabel, StringComparison.OrdinalIgnoreCase) ? null : valeur;
     }
 
     private sealed class LigneConfigurationÉcran

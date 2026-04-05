@@ -34,11 +34,11 @@ public sealed class TrayIconManager : IDisposable
         _displayService = new DisplayService(logger);
 
         _menu = new ContextMenuStrip();
-        _itemÉtat = new ToolStripMenuItem("État : initialisation...") { Enabled = false };
-        _itemConfiguration = new ToolStripMenuItem("Configuration...");
-        _itemLog = new ToolStripMenuItem("Ouvrir le fichier log");
-        _itemÀPropos = new ToolStripMenuItem("À propos");
-        _itemQuitter = new ToolStripMenuItem("Quitter");
+        _itemÉtat = new ToolStripMenuItem(Strings.TrayState) { Enabled = false };
+        _itemConfiguration = new ToolStripMenuItem(Strings.TrayConfiguration);
+        _itemLog = new ToolStripMenuItem(Strings.TrayOpenLog);
+        _itemÀPropos = new ToolStripMenuItem(Strings.TrayAbout);
+        _itemQuitter = new ToolStripMenuItem(Strings.TrayQuit);
 
         _itemConfiguration.Click += (_, _) => OuvrirConfiguration();
         _itemLog.Click += (_, _) => OuvrirFichierLog();
@@ -137,8 +137,8 @@ public sealed class TrayIconManager : IDisposable
         _écranPrincipal = DéterminerÉcranPrincipal(_écransActifs);
         var lettre = _écranPrincipal?.Lettre ?? "?";
         var hdr = _écranPrincipal?.EstHdrActif ?? false;
-        var profil = _écranPrincipal?.ProfilActuelAppliqué ?? "aucun profil";
-        var nomÉcran = _écranPrincipal?.NomConvivial ?? "Aucun écran actif";
+        var profil = _écranPrincipal?.ProfilActuelAppliqué ?? Strings.TrayNoProfile;
+        var nomÉcran = _écranPrincipal?.NomConvivial ?? Strings.TrayNoDisplay;
         var mode = hdr ? "HDR" : "SDR";
 
         _logger.Debug($"Mise à jour tray : {nomÉcran} / {mode} / {profil}");
@@ -148,7 +148,7 @@ public sealed class TrayIconManager : IDisposable
 
         var tooltip = $"{nomÉcran} — {mode} — {profil}";
         _notifyIcon.Text = LimiterTooltip(tooltip);
-        _itemÉtat.Text = $"État : {nomÉcran} / {mode}";
+        _itemÉtat.Text = Strings.TrayStateFormat(nomÉcran, mode);
     }
 
     private static DisplayMonitor? DéterminerÉcranPrincipal(List<DisplayMonitor> écrans)
@@ -179,7 +179,7 @@ public sealed class TrayIconManager : IDisposable
         {
             _logger.Erreur("Erreur lors de l'ouverture de la configuration.", ex);
             MessageBox.Show(
-                $"Impossible d'ouvrir la configuration :\n\n{ex.Message}",
+                Strings.ConfigOpenError(ex.Message),
                 "HDR Profile Switcher",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
@@ -202,7 +202,7 @@ public sealed class TrayIconManager : IDisposable
             else
             {
                 MessageBox.Show(
-                    $"Le fichier log n'existe pas encore :\n{chemin}",
+                    Strings.LogNotFound(chemin),
                     "HDR Profile Switcher",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
@@ -216,16 +216,10 @@ public sealed class TrayIconManager : IDisposable
 
     private void AfficherÀPropos()
     {
-        var message = "HDR Profile Switcher\n\n" +
-                      "Bascule automatiquement les profils ICC/HDR selon l'écran actif.\n\n" +
-                      "Fonctions :\n" +
-                      "• détection automatique des écrans actifs\n" +
-                      "• détection HDR / SDR\n" +
-                      "• application automatique des profils de calibration\n" +
-                      "• surveillance en continu avec watchdog\n\n" +
-                      "Version : 1.0.0";
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "4.2.0";
+        var message = Strings.AboutMessage + $"Version : {version}";
 
-        MessageBox.Show(message, "À propos", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        MessageBox.Show(message, Strings.AboutTitle, MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     private void Quitter()

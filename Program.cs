@@ -24,7 +24,7 @@ internal static class Program
         {
             // Une instance est déjà en cours d'exécution
             MessageBox.Show(
-                "HDR Profile Switcher est déjà en cours d'exécution.\n\nVérifiez la zone de notification (tray).",
+                Strings.AlreadyRunning,
                 "HDR Profile Switcher",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information
@@ -64,8 +64,8 @@ internal static class Program
         {
             logger.Erreur("Erreur fatale au démarrage", ex);
             MessageBox.Show(
-                $"Erreur fatale au démarrage :\n\n{ex.Message}\n\nConsultez le fichier log pour les détails.",
-                "HDR Profile Switcher — Erreur",
+                Strings.FatalStartup(ex.Message),
+                Strings.FatalErrorTitle,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error
             );
@@ -90,7 +90,7 @@ internal static class Program
 
         var résultat = MessageBox.Show(
             $"Une erreur inattendue s'est produite :\n\n{e.Exception.Message}\n\nContinuer l'application ?",
-            "HDR Profile Switcher — Erreur",
+            Strings.ErrorTitle,
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Error
         );
@@ -114,7 +114,7 @@ internal static class Program
         {
             MessageBox.Show(
                 $"Erreur fatale, l'application va se fermer :\n\n{exception?.Message ?? "Erreur inconnue"}",
-                "HDR Profile Switcher — Erreur fatale",
+                Strings.FatalErrorTitle,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error
             );
