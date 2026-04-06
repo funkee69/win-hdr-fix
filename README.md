@@ -1,48 +1,76 @@
 # HDR Profile Switcher
 
-Utilitaire Windows qui applique automatiquement le bon profil ICC couleur (SDR/HDR) à chaque écran connecté.
+A Windows tray utility that automatically applies the correct ICC color profile (SDR/HDR) to each connected display.
 
-## Le problème
+## The Problem
 
-Windows 11 ne permet pas de changer facilement de profil ICC par écran ni d'appliquer automatiquement le bon profil quand on passe de SDR à HDR (ou vice-versa). Le profil doit être changé manuellement à chaque fois dans Paramètres → Affichage → Profil de couleurs.
+Windows 11 doesn't properly switch ICC color profiles when you toggle HDR, connect a TV, or change displays. You have to manually go to Settings → Display → Color Profile every time.
 
-## La solution
+## The Solution
 
-HDR Profile Switcher tourne en tray (zone de notification) et :
-- Détecte automatiquement les écrans connectés et leur état HDR/SDR
-- Applique le profil ICC configuré pour chaque écran selon son mode
-- Surveille les changements d'état (branchement TV, activation/désactivation HDR)
-- Permet de configurer les profils via une interface graphique (clic droit → Configuration)
+HDR Profile Switcher runs silently in the system tray and:
+- **Detects** connected displays and their HDR/SDR state in real-time
+- **Applies** the configured ICC profile (SDR or HDR) per display automatically
+- **Monitors** display changes (new display connected, HDR toggled) every 5 seconds
+- **Provides** a GUI to configure profiles per display (right-click tray → Settings)
 
-## Configuration requise
+## System Requirements
 
-- Windows 10 version 2004 (20H1) ou ultérieur
-- GPU avec driver WDDM 2.6+ (NVIDIA Pascal+, AMD RX 400+, Intel Gen10+)
-- Profils ICC installés dans `C:\Windows\System32\spool\drivers\color\`
+- Windows 10 version 2004 (20H1) or later
+- GPU with WDDM 2.6+ driver:
+  - NVIDIA GeForce GTX 10xx (Pascal) or later
+  - AMD Radeon RX 400/500 Series or later
+  - Intel 10th Gen (Ice Lake) or later
+- ICC profiles installed in `C:\Windows\System32\spool\drivers\color\`
 
 ## Installation
 
-1. Téléchargez la dernière release
-2. Placez `HdrProfileSwitcher.exe` et `config.json` dans un dossier de votre choix
-3. Lancez `HdrProfileSwitcher.exe`
-4. Clic droit sur l'icône tray → Configuration pour associer vos profils
+1. Download the latest release from [Releases](https://github.com/funkee69/win-hdr-fix/releases)
+2. Extract the zip to a folder of your choice
+3. Run `HdrProfileSwitcher.exe`
+4. Right-click the tray icon → Settings to assign SDR/HDR profiles to each display
+5. (Optional) Enable "Start with Windows" in Settings
 
-## Utilisation
+## Usage
 
-L'icône dans la zone de notification affiche :
-- La lettre de l'écran principal détecté
-- L'état SDR ou HDR
+The tray icon displays:
+- A letter identifying the primary display
+- Orange/gold = HDR active, Blue/gray = SDR active
 
-Clic droit pour accéder au menu :
-- **Configuration** : associer profils SDR/HDR par écran
-- **Forcer le profil** : appliquer manuellement un profil
-- **Ouvrir le log** : voir les actions effectuées
-- **Quitter** : fermer l'application
+Right-click the tray icon for:
+- **Settings** — assign SDR and HDR profiles per display
+- **Open log** — view actions and debug info
+- **About** — version information
+- **Quit** — close the application
 
-## Comment ça marche
+## How It Works
 
-L'application utilise l'API Windows `ColorProfileAddDisplayAssociation` avec le LUID de chaque adaptateur graphique pour changer le profil ICC par défaut. Cette API est la méthode officielle Microsoft pour gérer les profils couleur sur Windows 10/11.
+The application uses the Windows `ColorProfileAddDisplayAssociation` API with the correct adapter LUID obtained from `QueryDisplayConfig`. This is the official Microsoft mechanism for programmatic ICC profile management.
 
-## Licence
+The key discovery: profiles must be **removed** then **re-added as default** in sequence for the switch to take effect. Simply calling the API with `setAsDefault=true` alone returns success but doesn't actually switch the profile.
+
+### Technical Flow
+```
+1. QueryDisplayConfig → adapter LUID + source ID
+2. Remove old profile association
+3. Add new profile as default (setAsDefault=true, advancedColor=true/false)
+4. Re-add old profile as non-default
+```
+
+## Supported Profile Types
+
+- **HDR profiles** with MHC2 tags (Microsoft Hardware Calibration v2)
+- **SDR profiles** — standard ICC (.icc/.icm) files
+- Calibration profiles from DisplayCAL, rtings, SpectraCal, etc.
+
+## Language
+
+The application automatically detects your Windows language:
+- **French** Windows → French UI
+- **Other** languages → English UI
+
+Logs are always in English for universal debugging.
+
+## License
 
 MIT
