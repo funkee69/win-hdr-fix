@@ -262,7 +262,7 @@ public static class NativeApis
     /// Le LUID targetAdapterID est un struct de 8 bytes obtenu via QueryDisplayConfig.
     /// </summary>
     /// <param name="scope">Portée : WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER (1).</param>
-    /// <param name="profileName">Nom du fichier profil (ex: "HDR PEAK 1000.icc").</param>
+    /// <param name="profileName">Nom du fichier profil (ex: "display-hdr.icc").</param>
     /// <param name="targetAdapterID">LUID struct de l'adaptateur GPU (obtenu via QueryDisplayConfig).</param>
     /// <param name="sourceID">Identifiant de la source d'affichage.</param>
     /// <param name="setAsDefault">Définir comme profil par défaut.</param>

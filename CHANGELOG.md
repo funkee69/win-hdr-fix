@@ -2,6 +2,11 @@
 
 All notable changes to HDR Profile Switcher are documented here.
 
+## [4.4.1] - 2026-04-07
+
+### Changed
+- Replaced remaining display/profile examples in source comments with generic wording
+
 ## [4.4.0] - 2026-04-07
 
 ### Changed

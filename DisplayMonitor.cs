@@ -12,7 +12,7 @@ public class DisplayMonitor
     // IDENTIFICATION
     // =========================================================================
 
-    /// <summary>Nom convivial de l'écran (depuis l'EDID, ex: "Alienware AW3423DWF").</summary>
+    /// <summary>Nom convivial de l'écran (depuis l'EDID, ex: "Primary HDR Monitor").</summary>
     public string NomConvivial { get; set; } = string.Empty;
 
     /// <summary>Chemin du périphérique Windows (ex: "\\?\DISPLAY1\...").</summary>
@@ -57,7 +57,7 @@ public class DisplayMonitor
     /// <summary>Indique si cet écran a une configuration dans config.json.</summary>
     public bool EstConfiguré => ConfigAssociée != null;
 
-    /// <summary>Lettre d'identification pour le tray icon (ex: "A" pour Alienware).</summary>
+    /// <summary>Lettre d'identification pour le tray icon (ex: "A" pour un écran principal).</summary>
     public string Lettre => !string.IsNullOrWhiteSpace(ConfigAssociée?.Lettre)
         ? ConfigAssociée!.Lettre
         : NomConvivial.Length > 0

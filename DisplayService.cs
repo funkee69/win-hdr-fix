@@ -389,7 +389,7 @@ public class DisplayService
     /// Aucune méthode de fallback, on garde uniquement le flow validé en conditions réelles.
     /// </summary>
     /// <param name="moniteur">L'écran cible.</param>
-    /// <param name="nomProfil">Nom du fichier profil (ex: "HDR PEAK 1000.icc").</param>
+    /// <param name="nomProfil">Nom du fichier profil (ex: "display-hdr.icc").</param>
     /// <param name="estProfilHdr">true pour HDR/SICC (associateAsAdvancedColor=true).</param>
     /// <returns>true si l'application a réussi.</returns>
     public bool AppliquerProfil(DisplayMonitor moniteur, string nomProfil, bool estProfilHdr)
