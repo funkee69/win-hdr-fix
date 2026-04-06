@@ -28,8 +28,11 @@ HDR Profile Switcher runs silently in the system tray and:
 1. Download the latest release from [Releases](https://github.com/funkee69/win-hdr-fix/releases)
 2. Extract the zip to a folder of your choice
 3. Run `HdrProfileSwitcher.exe`
-4. Right-click the tray icon → Settings to assign SDR/HDR profiles to each display
+4. On first launch, open **Settings** and assign SDR/HDR profiles to your displays
 5. (Optional) Enable "Start with Windows" in Settings
+
+No ICC profiles are bundled with the application. You must assign your own installed profiles.
+A generic `config.example.json` file is included for reference.
 
 ## Usage
 
@@ -52,9 +55,10 @@ The key discovery: profiles must be **removed** then **re-added as default** in 
 ### Technical Flow
 ```
 1. QueryDisplayConfig → adapter LUID + source ID
-2. Remove old profile association
-3. Add new profile as default (setAsDefault=true, advancedColor=true/false)
-4. Re-add old profile as non-default
+2. Remove conflicting profile associations
+3. Remove the target profile association
+4. Add the target profile as default (setAsDefault=true, advancedColor=true/false)
+5. Re-add the other profiles as non-default
 ```
 
 ## Supported Profile Types

@@ -143,31 +143,7 @@ public class AppConfig
 
     private static AppConfig CréerConfigurationParDéfaut() => new()
     {
-        Écrans = new List<ConfigurationÉcran>
-        {
-            new()
-            {
-                Nom = "Alienware AW3423DWF",
-                Lettre = "A",
-                MotifRecherche = "AW3423DWF",
-                ProfilSdr = "Alienware AW3423DWF Color Profile,D6500.icm",
-                ProfilHdr = "HDR PEAK 1000.icc"
-            },
-            new()
-            {
-                Nom = "TV LG OLED",
-                Lettre = "L",
-                MotifRecherche = "LG",
-                ProfilHdr = "LG HDR.icc"
-            },
-            new()
-            {
-                Nom = "Steam Deck (SudoVGA)",
-                Lettre = "S",
-                MotifRecherche = "Steam Deck",
-                ProfilHdr = "Steam Deck HDR.icc"
-            }
-        },
+        Écrans = new List<ConfigurationÉcran>(),
         IntervallePollingMs = 5000,
         FichierLog = "hdr-switcher.log",
         DémarrageAuto = true

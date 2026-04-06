@@ -2,6 +2,16 @@
 
 All notable changes to HDR Profile Switcher are documented here.
 
+## [4.4.0] - 2026-04-07
+
+### Changed
+- Replaced bundled user-specific configuration with a generic first-run configuration
+- Updated packaging for public distribution with no personal display/profile data
+- Refreshed release tooling to derive the package version from the project file
+
+### Removed
+- Internal development notes, reverse-engineering artifacts, and dump scripts from the public repository
+
 ## [4.3.9] - 2026-04-07
 
 ### Fixed
@@ -12,6 +22,14 @@ All notable changes to HDR Profile Switcher are documented here.
 ### Changed
 - Simplified profile application logic to keep only the validated switching method
 - Improved logging clarity around active display/config mapping and applied profiles
+
+### Changed
+- Replaced bundled user-specific configuration with a generic first-run configuration
+- Updated packaging for public distribution with no personal display/profile data
+- Refreshed release tooling to derive the package version from the project file
+
+### Removed
+- Internal development notes, reverse-engineering artifacts, and dump scripts from the public repository
 
 ## [4.2.0] - 2026-04-05
 

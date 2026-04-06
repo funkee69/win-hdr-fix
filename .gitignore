@@ -15,6 +15,7 @@ Thumbs.db
 
 # Logs
 *.log
+config.json
 
 # Downloaded DLLs (reverse-engineering)
 *.dll
