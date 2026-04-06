@@ -2,6 +2,17 @@
 
 All notable changes to HDR Profile Switcher are documented here.
 
+## [4.3.9] - 2026-04-07
+
+### Fixed
+- More reliable profile switching during display topology changes and HDR/SDR transitions
+- Preserved configuration entries for displays that are temporarily disconnected
+- Corrected application version metadata in published builds and About dialog
+
+### Changed
+- Simplified profile application logic to keep only the validated switching method
+- Improved logging clarity around active display/config mapping and applied profiles
+
 ## [4.2.0] - 2026-04-05
 
 ### Added

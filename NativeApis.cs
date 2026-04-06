@@ -278,22 +278,6 @@ public static class NativeApis
     );
 
     /// <summary>
-    /// Définit un profil installé comme profil PAR DÉFAUT pour un écran.
-    /// C'est cette API qui force réellement le changement (pas juste l'ajout à la liste).
-    /// Le LUID targetAdapterID est un struct de 8 bytes obtenu via QueryDisplayConfig.
-    /// Signature validée (MSDN) : scope, profileName, profileType, profileSubType, adapterId, sourceID.
-    /// </summary>
-    [DllImport("mscms.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern int ColorProfileSetDisplayDefaultAssociation(
-        uint scope,
-        [MarshalAs(UnmanagedType.LPWStr)] string profileName,
-        uint profileType,
-        uint profileSubType,
-        LUID targetAdapterID,
-        uint sourceID
-    );
-
-    /// <summary>
     /// Supprime l'association d'un profil ICC/SICC d'un affichage.
     /// </summary>
     [DllImport("mscms.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -318,6 +302,7 @@ public static class NativeApis
         [Out, MarshalAs(UnmanagedType.LPWStr)] System.Text.StringBuilder? profileName,
         ref uint profileNameSize
     );
+
 
     // =========================================================================
     // CODES D'ERREUR Windows

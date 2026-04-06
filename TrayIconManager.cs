@@ -216,7 +216,7 @@ public sealed class TrayIconManager : IDisposable
 
     private void AfficherÀPropos()
     {
-        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "4.2.0";
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "4.3.9";
         var message = Strings.AboutMessage + $"Version : {version}";
 
         MessageBox.Show(message, Strings.AboutTitle, MessageBoxButtons.OK, MessageBoxIcon.Information);

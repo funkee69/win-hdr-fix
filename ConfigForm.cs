@@ -122,9 +122,31 @@ public sealed class ConfigForm : Form
 
     private void ConstruireLignes()
     {
-        var sources = _écransDétectés.Count > 0
-            ? _écransDétectés
-            : _config.Écrans.Select(cfg => new DisplayMonitor { NomConvivial = cfg.Nom, ConfigAssociée = cfg }).ToList();
+        // Merger écrans détectés + écrans configurés non détectés
+        var sources = new List<DisplayMonitor>(_écransDétectés);
+        
+        // Ajouter les écrans configurés qui ne sont pas actuellement détectés
+        foreach (var cfg in _config.Écrans)
+        {
+            bool déjàPrésent = _écransDétectés.Any(m =>
+                !string.IsNullOrWhiteSpace(cfg.MotifRecherche) &&
+                m.NomConvivial.Contains(cfg.MotifRecherche, StringComparison.OrdinalIgnoreCase));
+            
+            if (!déjàPrésent)
+            {
+                sources.Add(new DisplayMonitor
+                {
+                    NomConvivial = cfg.Nom + " (offline)",
+                    ConfigAssociée = cfg
+                });
+            }
+        }
+        
+        // Fallback si rien du tout
+        if (sources.Count == 0)
+        {
+            sources = _config.Écrans.Select(cfg => new DisplayMonitor { NomConvivial = cfg.Nom, ConfigAssociée = cfg }).ToList();
+        }
 
         int ligneIndex = 1;
         foreach (var écran in sources)

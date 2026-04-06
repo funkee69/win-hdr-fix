@@ -8,16 +8,19 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <DefaultItemExcludes>$(DefaultItemExcludes);TargetProbe/**;TargetProbe2/**;TargetProbe3/**;TargetProbe4/**;TargetProbe5/**;TargetProbe6/**;TargetProbe7/**;TargetProbe8/**;WinmdDump/**;DllMetaDump/**;ReadOnly/**;SwitchProbe/**;SwitchProbe2/**;CleanTest/**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);TargetProbe/**;TargetProbe2/**;TargetProbe3/**;TargetProbe4/**;TargetProbe5/**;TargetProbe6/**;TargetProbe7/**;TargetProbe8/**;WinmdDump/**;DllMetaDump/**;ReadOnly/**;SwitchProbe/**;SwitchProbe2/**;CleanTest/**;MultiPathProbe/**</DefaultItemExcludes>
 
     <!-- Métadonnées de l'application -->
     <AssemblyName>HdrProfileSwitcher</AssemblyName>
     <RootNamespace>HdrProfileSwitcher</RootNamespace>
     <AssemblyTitle>HDR Profile Switcher</AssemblyTitle>
     <AssemblyDescription>Basculement automatique des profils ICC/HDR selon l'écran actif</AssemblyDescription>
-    <AssemblyVersion>4.2.0.0</AssemblyVersion>
-    <FileVersion>4.2.0.0</FileVersion>
+    <Version>4.3.9</Version>
+    <AssemblyVersion>4.3.9.0</AssemblyVersion>
+    <FileVersion>4.3.9.0</FileVersion>
+    <InformationalVersion>4.3.9</InformationalVersion>
     <Company>Colin Golberg</Company>
     <Copyright>Copyright © 2026</Copyright>
 
@@ -61,6 +64,8 @@
     <Compile Remove="SwitchProbe/**" />
     <Compile Remove="SwitchProbe2/**" />
     <Compile Remove="CleanTest/**" />
+    <Compile Remove="MultiPathProbe/**" />
+    <Compile Remove="WcsProbe/**" />
     <EmbeddedResource Remove="TargetProbe/**" />
     <EmbeddedResource Remove="TargetProbe2/**" />
     <EmbeddedResource Remove="TargetProbe3/**" />
@@ -75,6 +80,7 @@
     <EmbeddedResource Remove="SwitchProbe/**" />
     <EmbeddedResource Remove="SwitchProbe2/**" />
     <EmbeddedResource Remove="CleanTest/**" />
+    <EmbeddedResource Remove="MultiPathProbe/**" />
     <None Remove="TargetProbe/**" />
     <None Remove="TargetProbe2/**" />
     <None Remove="TargetProbe3/**" />
@@ -89,6 +95,7 @@
     <None Remove="SwitchProbe/**" />
     <None Remove="SwitchProbe2/**" />
     <None Remove="CleanTest/**" />
+    <None Remove="MultiPathProbe/**" />
   </ItemGroup>
 
 </Project>

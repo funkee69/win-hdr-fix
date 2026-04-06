@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using Microsoft.Win32;
 
 namespace HdrProfileSwitcher;
 
@@ -11,13 +10,12 @@ namespace HdrProfileSwitcher;
 /// Service principal de gestion des écrans.
 /// Énumère les moniteurs actifs, détecte le mode HDR et applique les profils ICC.
 ///
-/// v4.1 — Mécanisme validé (05/04/2026, 800 nits confirmé NVIDIA app) :
-/// 1. Méthode primaire : Remove + Add(default) + Re-add via ColorProfileAddDisplayAssociation (LUID struct)
-/// 2. Méthode fallback : écriture directe registre ICM (REG_MULTI_SZ, premier élément = profil actif)
+/// Mécanisme actuel : Remove + Add(default) + Re-add via ColorProfileAddDisplayAssociation (LUID struct).
 /// </summary>
 public class DisplayService
 {
     private readonly Logger _logger;
+    private AppConfig? _config;
 
     /// <summary>
     /// Répertoire Windows contenant les profils ICC/SICC installés.
@@ -386,9 +384,9 @@ public class DisplayService
     /// <summary>
     /// Applique un profil ICC ou SICC à un écran spécifique.
     ///
-    /// Mécanisme v4.1 (validé 05/04/2026) :
-    /// a) Méthode primaire : Remove + Add(default) + Re-add via ColorProfileAddDisplayAssociation avec LUID
-    /// b) Méthode fallback : écriture registre ICM (REG_MULTI_SZ, premier = actif)
+    /// Mécanisme actuel :
+    /// Remove + Add(default) + Re-add via ColorProfileAddDisplayAssociation avec LUID.
+    /// Aucune méthode de fallback, on garde uniquement le flow validé en conditions réelles.
     /// </summary>
     /// <param name="moniteur">L'écran cible.</param>
     /// <param name="nomProfil">Nom du fichier profil (ex: "HDR PEAK 1000.icc").</param>
@@ -405,45 +403,74 @@ public class DisplayService
         _logger.Info($"Application du profil '{nomProfil}' sur '{moniteur.NomConvivial}' " +
                      $"(HDR={estProfilHdr}, adapterId=0x{moniteur.AdapterId.LowPart:X8}:{moniteur.AdapterId.HighPart:X8}, sourceId={moniteur.SourceId})");
 
-        uint profileSubType = estProfilHdr
-            ? NativeApis.CPST_EXTENDED_DISPLAY_COLOR_MODE
-            : NativeApis.CPST_STANDARD_DISPLAY_COLOR_MODE;
-
         // ============================================================
-        // MÉTHODE PRIMAIRE : API ColorProfile* (mscms.dll)
-        // Flow validé le 05/04/2026 (800 nits confirmé par NVIDIA app) :
-        //   1. Remove(ancien profil)
-        //   2. Add(nouveau profil, setAsDefault=true, advColor=estHdr)
-        //   3. Re-add(ancien profil, setAsDefault=false)
-        // Le LUID est un struct de 8 bytes obtenu via QueryDisplayConfig.
+        // MÉTHODE UNIQUE VALIDÉE : API ColorProfile* (mscms.dll)
+        // Flow validé en conditions réelles :
+        //   1. Remove autres profils
+        //   2. Remove self
+        //   3. Add(nouveau profil, setAsDefault=true, advColor=estHdr)
+        //   4. Re-add(anciens profils, setAsDefault=false)
+        // Aucun fallback, si cette méthode échoue on remonte l'échec.
         // ============================================================
         bool succèsApi = false;
         try
         {
-            // Étape 1 : Retirer TOUS les autres profils du même type (nécessaire pour forcer le switch)
-            // On retire tous les profils HDR ou SDR connus sauf celui qu'on veut appliquer.
-            // Cela garantit que le switch fonctionne même au premier lancement (ProfilActuelAppliqué vide).
-            var profilsConnus = ListerProfilsInstallés();
-            foreach (var autreProfile in profilsConnus)
+            var profilsRetirés = new List<(string nom, bool advColor)>();
+            if (_config != null)
             {
-                if (autreProfile.Equals(nomProfil, StringComparison.OrdinalIgnoreCase))
-                    continue;
-                try
+                foreach (var autreConfig in _config.Écrans)
                 {
-                    int hrRemove = NativeApis.ColorProfileRemoveDisplayAssociation(
-                        scope: NativeApis.WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER,
-                        profileName: autreProfile,
-                        targetAdapterID: moniteur.AdapterId,
-                        sourceID: moniteur.SourceId,
-                        dissociateAdvancedColor: estProfilHdr
-                    );
-                    if (hrRemove == 0)
-                        _logger.Debug($"Remove '{autreProfile}' : OK");
+                    if (autreConfig.Nom.Equals(moniteur.ConfigAssociée?.Nom, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    if (!string.IsNullOrEmpty(autreConfig.ProfilSdr))
+                    {
+                        int hrRem = NativeApis.ColorProfileRemoveDisplayAssociation(
+                            scope: NativeApis.WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER,
+                            profileName: autreConfig.ProfilSdr,
+                            targetAdapterID: moniteur.AdapterId,
+                            sourceID: moniteur.SourceId,
+                            dissociateAdvancedColor: false);
+                        if (hrRem == 0)
+                        {
+                            profilsRetirés.Add((autreConfig.ProfilSdr, false));
+                            _logger.Debug($"Remove '{autreConfig.ProfilSdr}' (SDR) : OK");
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(autreConfig.ProfilHdr))
+                    {
+                        int hrRem = NativeApis.ColorProfileRemoveDisplayAssociation(
+                            scope: NativeApis.WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER,
+                            profileName: autreConfig.ProfilHdr,
+                            targetAdapterID: moniteur.AdapterId,
+                            sourceID: moniteur.SourceId,
+                            dissociateAdvancedColor: true);
+                        if (hrRem == 0)
+                        {
+                            profilsRetirés.Add((autreConfig.ProfilHdr, true));
+                            _logger.Debug($"Remove '{autreConfig.ProfilHdr}' (HDR) : OK");
+                        }
+                    }
                 }
-                catch { /* ignorer les profils non associés */ }
             }
 
-            // Étape 2 : Ajouter le nouveau profil comme défaut
+            try
+            {
+                int hrRemSelf = NativeApis.ColorProfileRemoveDisplayAssociation(
+                    scope: NativeApis.WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER,
+                    profileName: nomProfil,
+                    targetAdapterID: moniteur.AdapterId,
+                    sourceID: moniteur.SourceId,
+                    dissociateAdvancedColor: estProfilHdr
+                );
+                _logger.Debug($"Remove self '{nomProfil}' (advColor={estProfilHdr}) : HR=0x{hrRemSelf:X8}");
+            }
+            catch (Exception exRemSelf)
+            {
+                _logger.Debug($"Remove self '{nomProfil}' ignoré : {exRemSelf.Message}");
+            }
+
             int hrAdd = NativeApis.ColorProfileAddDisplayAssociation(
                 scope: NativeApis.WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER,
                 profileName: nomProfil,
@@ -456,71 +483,49 @@ public class DisplayService
 
             succèsApi = (hrAdd == 0);
 
-            // Étape 3 : Re-ajouter les autres profils en non-défaut
             if (succèsApi)
             {
-                foreach (var autreProfile in profilsConnus)
+                foreach (var (profRetiré, advColor) in profilsRetirés)
                 {
-                    if (autreProfile.Equals(nomProfil, StringComparison.OrdinalIgnoreCase))
-                        continue;
                     try
                     {
-                        NativeApis.ColorProfileAddDisplayAssociation(
+                        int hrReAdd = NativeApis.ColorProfileAddDisplayAssociation(
                             scope: NativeApis.WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER,
-                            profileName: autreProfile,
+                            profileName: profRetiré,
                             targetAdapterID: moniteur.AdapterId,
                             sourceID: moniteur.SourceId,
                             setAsDefault: false,
-                            associateAsAdvancedColor: estProfilHdr
+                            associateAsAdvancedColor: advColor
                         );
+                        _logger.Debug($"Re-add '{profRetiré}' (default=false, advColor={advColor}) : HR=0x{hrReAdd:X8}");
                     }
-                    catch { /* ignorer */ }
+                    catch (Exception exReAdd)
+                    {
+                        _logger.Debug($"Re-add '{profRetiré}' ignoré : {exReAdd.Message}");
+                    }
                 }
-            }
 
-            if (succèsApi)
                 _logger.Info($"✅ Profil appliqué via API : '{nomProfil}' {(estProfilHdr ? "HDR" : "SDR")} sur '{moniteur.NomConvivial}'");
-            else
-                _logger.Avertissement($"API Add a échoué HR=0x{hrAdd:X8}, passage au fallback registre.");
-        }
-        catch (DllNotFoundException)
-        {
-            _logger.Avertissement("mscms.dll indisponible, passage au fallback registre.");
-        }
-        catch (Exception ex)
-        {
-            _logger.Avertissement($"API primaire exception : {ex.Message}, passage au fallback registre.");
-        }
-
-        // ============================================================
-        // MÉTHODE FALLBACK : Registre ICM direct
-        // HKCU\...\ICM\ProfileAssociations\Display\{GUID}\XXXX
-        //   ICMProfileAC (HDR) ou ICMProfile (SDR)
-        // Windows lit le 1er élément du REG_MULTI_SZ comme profil actif.
-        // ============================================================
-        bool succèsRegistre = succèsApi; // si API ok, pas besoin du registre en plus
-        if (!succèsApi)
-        {
-            string valeurReg = estProfilHdr ? "ICMProfileAC" : "ICMProfile";
-            succèsRegistre = RéordonnerProfilRegistre(nomProfil, valeurReg);
-
-            if (succèsRegistre)
-                _logger.Info($"✅ Fallback registre réussi : '{nomProfil}' en première position de '{valeurReg}'");
+                moniteur.ProfilActuelAppliqué = nomProfil;
+            }
             else
             {
-                _logger.Erreur($"❌ Échec registre pour '{nomProfil}' sur '{moniteur.NomConvivial}'");
+                _logger.Erreur($"❌ Échec API pour '{nomProfil}' sur '{moniteur.NomConvivial}' (HR Add=0x{hrAdd:X8})");
                 var cheminComplet = Path.Combine(RépertoireProfils, nomProfil);
                 if (!File.Exists(cheminComplet))
                     _logger.Avertissement($"Fichier profil '{nomProfil}' absent de {RépertoireProfils}");
             }
         }
-
-        if (succèsApi || succèsRegistre)
+        catch (DllNotFoundException)
         {
-            moniteur.ProfilActuelAppliqué = nomProfil;
+            _logger.Erreur("❌ mscms.dll indisponible, aucun fallback n'est activé.");
+        }
+        catch (Exception ex)
+        {
+            _logger.Erreur($"❌ API primaire exception sans fallback : {ex.Message}");
         }
 
-        return succèsApi || succèsRegistre;
+        return succèsApi;
     }
 
     /// <summary>
@@ -547,159 +552,12 @@ public class DisplayService
         return AppliquerProfil(moniteur, profilAttendu, moniteur.EstHdrActif);
     }
 
-    // =========================================================================
-    // REGISTRE — Réordonnement du profil actif (fallback)
-    // =========================================================================
-
     /// <summary>
-    /// Clé registre contenant les associations de profils par écran.
-    /// Chaque sous-clé (0000, 0001, ...) correspond à un device index.
-    /// </summary>
-    private const string CLÉ_REGISTRE_ICM =
-        @"Software\Microsoft\Windows NT\CurrentVersion\ICM\ProfileAssociations\Display\{4d36e96e-e325-11ce-bfc1-08002be10318}";
-
-    /// <summary>
-    /// Parcourt toutes les sous-clés registre ICM et réordonne le REG_MULTI_SZ
-    /// pour mettre le profil demandé en premier (= actif pour Windows).
-    ///
-    /// ICMProfileAC = liste profils HDR (premier = actif)
-    /// ICMProfile   = liste profils SDR (premier = actif)
-    /// </summary>
-    private bool RéordonnerProfilRegistre(string nomProfil, string nomValeur)
-    {
-        int modifiées = 0;
-        try
-        {
-            using var cléParent = Registry.CurrentUser.OpenSubKey(CLÉ_REGISTRE_ICM);
-            if (cléParent == null)
-            {
-                _logger.Erreur($"Clé registre ICM introuvable : HKCU\\{CLÉ_REGISTRE_ICM}");
-                return false;
-            }
-
-            foreach (string nomSousClé in cléParent.GetSubKeyNames())
-            {
-                try
-                {
-                    using var sousClé = Registry.CurrentUser.OpenSubKey(
-                        $"{CLÉ_REGISTRE_ICM}\\{nomSousClé}", writable: true);
-                    if (sousClé == null) continue;
-
-                    var valeur = sousClé.GetValue(nomValeur);
-                    if (valeur is not string[] listeActuelle || listeActuelle.Length == 0)
-                        continue;
-
-                    int index = Array.FindIndex(listeActuelle,
-                        p => p.Equals(nomProfil, StringComparison.OrdinalIgnoreCase));
-
-                    if (index < 0) continue;
-
-                    if (index == 0)
-                    {
-                        _logger.Debug($"Registre [{nomSousClé}] {nomValeur} : '{nomProfil}' déjà en premier.");
-                        modifiées++;
-                        continue;
-                    }
-
-                    var nouvelleListe = new List<string> { listeActuelle[index] };
-                    for (int i = 0; i < listeActuelle.Length; i++)
-                    {
-                        if (i != index)
-                            nouvelleListe.Add(listeActuelle[i]);
-                    }
-
-                    sousClé.SetValue(nomValeur, nouvelleListe.ToArray(), RegistryValueKind.MultiString);
-                    modifiées++;
-
-                    _logger.Info($"✅ Registre [{nomSousClé}] {nomValeur} : '{nomProfil}' déplacé en 1ère position " +
-                                 $"(ancien ordre: {string.Join(" → ", listeActuelle.Select(p => $"'{p}'"))})");
-                }
-                catch (Exception exSousClé)
-                {
-                    _logger.Debug($"Registre [{nomSousClé}] ignoré : {exSousClé.Message}");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.Erreur($"Erreur accès registre ICM : {ex.Message}");
-            return false;
-        }
-
-        if (modifiées > 0)
-            _logger.Info($"Registre : {modifiées} sous-clé(s) mises à jour pour '{nomProfil}' dans '{nomValeur}'.");
-        else
-            _logger.Avertissement($"Registre : profil '{nomProfil}' introuvable dans aucune sous-clé de '{nomValeur}'.");
-
-        return modifiées > 0;
-    }
-
-    // =========================================================================
-    // ESPION DE PROFILS — Détecte les changements via Windows
-    // =========================================================================
-
-    /// <summary>
-    /// Dictionnaire des derniers profils connus par subtype pour chaque écran.
-    /// Clé = "sourceId:subType", Valeur = nom du profil.
-    /// </summary>
-    private readonly Dictionary<string, string> _derniersProfilsConnus = new();
-
-    /// <summary>
-    /// Interroge Windows pour connaître le profil par défaut actuel d'un écran
-    /// pour les subtypes SDR (7) et HDR (8). Log les changements détectés.
+    /// Méthode conservée pour compatibilité, mais actuellement désactivée.
+    /// La détection HDR/SDR native suffit pour le comportement de l'application.
     /// </summary>
     public void EspionnerProfilsActifs(DisplayMonitor moniteur)
     {
-        // DÉSACTIVÉ v4.1 — ColorProfileGetDisplayDefault retourne des données corrompues
-        // (caractères coréens/chinois dans le StringBuilder). Non nécessaire :
-        // la détection HDR/SDR via DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO fonctionne parfaitement.
-        return;
-
-        // Subtypes pertinents : 7 = SDR, 8 = HDR (confirmé par espionnage v1.9)
-        uint[] subtypesATester = { 7, 8 };
-
-        foreach (uint subType in subtypesATester)
-        {
-            try
-            {
-                uint bufferSize = 512;
-                var sb = new System.Text.StringBuilder((int)bufferSize);
-                int hr = NativeApis.ColorProfileGetDisplayDefault(
-                    NativeApis.WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER,
-                    moniteur.AdapterId,
-                    moniteur.SourceId,
-                    NativeApis.CPT_ICC,
-                    subType,
-                    sb,
-                    ref bufferSize
-                );
-
-                string clé = $"{moniteur.SourceId}:{subType}";
-                string profilActuel = (hr == 0 && sb.Length > 0) ? sb.ToString() : "";
-                string label = subType == 7 ? "SDR" : "HDR";
-
-                if (_derniersProfilsConnus.TryGetValue(clé, out string? ancien))
-                {
-                    if (ancien != profilActuel)
-                    {
-                        _logger.Info($"\U0001f50d ESPION [{label}] : Changement détecté ! " +
-                                     $"'{ancien}' → '{profilActuel}' " +
-                                     $"(HR=0x{hr:X8}, écran={moniteur.NomConvivial})");
-                        _derniersProfilsConnus[clé] = profilActuel;
-                    }
-                }
-                else
-                {
-                    _derniersProfilsConnus[clé] = profilActuel;
-                    _logger.Info($"\U0001f50d ESPION INIT [{label}] : '{profilActuel}' " +
-                                 $"(HR=0x{hr:X8}, écran={moniteur.NomConvivial})");
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.Debug($"Espion subType={subType} exception : {ex.Message}");
-            }
-        }
     }
 
     /// <summary>
@@ -707,6 +565,7 @@ public class DisplayService
     /// </summary>
     public void AssocierConfigurations(List<DisplayMonitor> moniteurs, AppConfig config)
     {
+        _config = config;
         foreach (var moniteur in moniteurs)
         {
             moniteur.ConfigAssociée = null;
