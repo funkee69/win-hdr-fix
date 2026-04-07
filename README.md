@@ -32,7 +32,6 @@ HDR Profile Switcher runs silently in the system tray and:
 5. (Optional) Enable "Start with Windows" in Settings
 
 No ICC profiles are bundled with the application. You must assign your own installed profiles.
-A generic `config.example.json` file is included for reference.
 
 ## Usage
 

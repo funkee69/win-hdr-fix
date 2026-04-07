@@ -15,7 +15,6 @@ rm -rf "release"
 mkdir -p "${RELEASE_DIR}"
 cp "${PUBLISH_DIR}/HdrProfileSwitcher.exe" "${RELEASE_DIR}/"
 cp README.md "${RELEASE_DIR}/"
-cp config.example.json "${RELEASE_DIR}/"
 
 cd release
 zip -r "HdrProfileSwitcher-${VERSION}.zip" "HdrProfileSwitcher-${VERSION}/"

@@ -2,6 +2,11 @@
 
 All notable changes to HDR Profile Switcher are documented here.
 
+## [4.4.2] - 2026-04-07
+
+### Changed
+- Removed `config.example.json` from the repository and release package
+
 ## [4.4.1] - 2026-04-07
 
 ### Changed
