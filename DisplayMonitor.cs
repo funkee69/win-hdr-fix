@@ -27,6 +27,12 @@ public class DisplayMonitor
     /// <summary>Identifiant cible de l'affichage (targetId dans DisplayConfig).</summary>
     public uint TargetId { get; set; }
 
+    /// <summary>Nom GDI du périphérique source (ex: "\\\\.\\DISPLAY1"), utilisé pour identifier l'écran principal.</summary>
+    public string NomGDI { get; set; } = string.Empty;
+
+    /// <summary>Indique si cet écran est l'écran principal Windows.</summary>
+    public bool EstPrincipal { get; set; }
+
     // =========================================================================
     // ÉTAT COURANT
     // =========================================================================

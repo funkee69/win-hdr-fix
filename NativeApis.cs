@@ -26,6 +26,9 @@ public static class NativeApis
     /// <summary>Type d'info : informations de couleur avancée v2 (Windows 11 24H2+, ACM).</summary>
     public const uint DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO_2 = 14;
 
+    /// <summary>Type d'info : nom GDI de la source (ex: "\\\\.\\DISPLAY1").</summary>
+    public const uint DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME = 1;
+
     /// <summary>Type d'info : nom de l'adaptateur (GPU).</summary>
     public const uint DISPLAYCONFIG_DEVICE_INFO_GET_ADAPTER_NAME = 4;
 
@@ -177,6 +180,19 @@ public static class NativeApis
     }
 
     /// <summary>
+    /// Nom GDI du périphérique source (ex: "\\\\.\\DISPLAY1").
+    /// Permet de faire le lien avec Screen.PrimaryScreen.DeviceName.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct DISPLAYCONFIG_SOURCE_DEVICE_NAME
+    {
+        public DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string viewGdiDeviceName;
+    }
+
+    /// <summary>
     /// Informations de couleur avancée v2 — Windows 11 24H2+ (ACM).
     /// Distingue SDR / WCG / HDR / Auto via activeColorMode.
     /// </summary>
@@ -247,6 +263,12 @@ public static class NativeApis
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = false)]
     public static extern int DisplayConfigGetDeviceInfo(
         ref DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2 requestPacket
+    );
+
+    /// <summary>Surcharge pour DISPLAYCONFIG_SOURCE_DEVICE_NAME (nom GDI de la source).</summary>
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = false)]
+    public static extern int DisplayConfigGetDeviceInfo(
+        ref DISPLAYCONFIG_SOURCE_DEVICE_NAME requestPacket
     );
 
     /// <summary>Surcharge raw avec IntPtr pour contourner les problèmes de taille de struct.</summary>

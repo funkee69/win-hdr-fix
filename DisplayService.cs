@@ -90,6 +90,9 @@ public class DisplayService
                 // Récupérer le nom convivial du moniteur
                 RécupérerNomMoniteur(chemin, moniteur);
 
+                // Récupérer le nom GDI (pour identifier l'écran principal)
+                RécupérerNomGDI(chemin, moniteur);
+
                 // Détecter l'état HDR
                 DétecterÉtatHdr(chemin, moniteur);
 
@@ -101,8 +104,18 @@ public class DisplayService
             _logger.Erreur("Erreur lors de l'énumération des écrans", ex);
         }
 
+        // Déterminer l'écran principal Windows
+        var nomÉcranPrincipal = System.Windows.Forms.Screen.PrimaryScreen?.DeviceName;
+        if (!string.IsNullOrEmpty(nomÉcranPrincipal))
+        {
+            foreach (var m in moniteurs)
+            {
+                m.EstPrincipal = m.NomGDI.Equals(nomÉcranPrincipal, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
         // Log uniquement au premier cycle ou si la liste/état des écrans a changé
-        string fingerprint = string.Join("|", moniteurs.Select(m => $"{m.NomConvivial}:{m.EstHdrActif}"));
+        string fingerprint = string.Join("|", moniteurs.Select(m => $"{m.NomConvivial}:{m.EstHdrActif}:{m.EstPrincipal}"));
         if (fingerprint != _derniersÉcransFingerprint)
         {
             foreach (var m in moniteurs)
@@ -152,6 +165,40 @@ public class DisplayService
         {
             _logger.Erreur("Erreur lors de la récupération du nom du moniteur", ex);
             moniteur.NomConvivial = "Moniteur inconnu";
+        }
+    }
+
+    /// <summary>
+    /// Récupère le nom GDI de la source (ex: "\\\\.\\DISPLAY1") via DisplayConfigGetDeviceInfo.
+    /// Permet de faire le lien avec Screen.PrimaryScreen.DeviceName.
+    /// </summary>
+    private void RécupérerNomGDI(
+        NativeApis.DISPLAYCONFIG_PATH_INFO chemin,
+        DisplayMonitor moniteur)
+    {
+        try
+        {
+            var requête = new NativeApis.DISPLAYCONFIG_SOURCE_DEVICE_NAME
+            {
+                header = new NativeApis.DISPLAYCONFIG_DEVICE_INFO_HEADER
+                {
+                    type = NativeApis.DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME,
+                    size = (uint)Marshal.SizeOf<NativeApis.DISPLAYCONFIG_SOURCE_DEVICE_NAME>(),
+                    adapterId = chemin.sourceInfo.adapterId,
+                    id = chemin.sourceInfo.id
+                },
+                viewGdiDeviceName = string.Empty
+            };
+
+            int résultat = NativeApis.DisplayConfigGetDeviceInfo(ref requête);
+            if (NativeApis.EstSuccès(résultat))
+            {
+                moniteur.NomGDI = requête.viewGdiDeviceName ?? string.Empty;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Debug($"Impossible de récupérer le nom GDI : {ex.Message}");
         }
     }
 

@@ -7,6 +7,19 @@ All notable changes to HDR Profile Switcher are documented here.
 ### Changed
 - Removed `config.example.json` from the repository and release package
 
+## [4.5.0] - 2026-04-13
+
+### Changed
+- Tray icon now reflects the **Windows primary display** (letter + HDR/SDR color)
+- Tooltip on hover shows all connected displays with their current state and applied profile
+- Right-click context menu shows one status line per connected display (instead of a single line)
+- Tooltip character limit raised from 63 to 127 (Windows Vista+ standard)
+- Primary display detection via GDI device name matching (`Screen.PrimaryScreen`)
+
+### Added
+- `EstPrincipal` and `NomGDI` properties on `DisplayMonitor` for primary screen identification
+- `DISPLAYCONFIG_SOURCE_DEVICE_NAME` P/Invoke for GDI-to-DisplayConfig mapping
+
 ## [4.4.1] - 2026-04-07
 
 ### Changed

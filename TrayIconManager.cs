@@ -17,7 +17,7 @@ public sealed class TrayIconManager : IDisposable
     private readonly DisplayService _displayService;
     private readonly NotifyIcon _notifyIcon;
     private readonly ContextMenuStrip _menu;
-    private readonly ToolStripMenuItem _itemÉtat;
+    private readonly List<ToolStripItem> _itemsÉtat = new();
     private readonly ToolStripMenuItem _itemConfiguration;
     private readonly ToolStripMenuItem _itemLog;
     private readonly ToolStripMenuItem _itemÀPropos;
@@ -34,7 +34,6 @@ public sealed class TrayIconManager : IDisposable
         _displayService = new DisplayService(logger);
 
         _menu = new ContextMenuStrip();
-        _itemÉtat = new ToolStripMenuItem(Strings.TrayState) { Enabled = false };
         _itemConfiguration = new ToolStripMenuItem(Strings.TrayConfiguration);
         _itemLog = new ToolStripMenuItem(Strings.TrayOpenLog);
         _itemÀPropos = new ToolStripMenuItem(Strings.TrayAbout);
@@ -47,8 +46,6 @@ public sealed class TrayIconManager : IDisposable
 
         _menu.Items.AddRange(new ToolStripItem[]
         {
-            _itemÉtat,
-            new ToolStripSeparator(),
             _itemConfiguration,
             _itemLog,
             new ToolStripSeparator(),
@@ -137,18 +134,58 @@ public sealed class TrayIconManager : IDisposable
         _écranPrincipal = DéterminerÉcranPrincipal(_écransActifs);
         var lettre = _écranPrincipal?.Lettre ?? "?";
         var hdr = _écranPrincipal?.EstHdrActif ?? false;
-        var profil = _écranPrincipal?.ProfilActuelAppliqué ?? Strings.TrayNoProfile;
-        var nomÉcran = _écranPrincipal?.NomConvivial ?? Strings.TrayNoDisplay;
-        var mode = hdr ? "HDR" : "SDR";
 
-        _logger.Debug($"Mise à jour tray : {nomÉcran} / {mode} / {profil}");
+        _logger.Debug($"Mise à jour tray : {_écranPrincipal?.NomConvivial ?? "?"} / {(hdr ? "HDR" : "SDR")}");
 
+        // Icône = écran principal
         _notifyIcon.Icon?.Dispose();
         _notifyIcon.Icon = GénérerIcône(lettre, hdr);
 
-        var tooltip = $"{nomÉcran} — {mode} — {profil}";
+        // Tooltip = une ligne par écran connecté
+        var lignes = _écransActifs
+            .OrderByDescending(e => e.EstPrincipal)
+            .Select(e => $"[{e.Lettre}] {e.NomConvivial} — {(e.EstHdrActif ? "HDR" : "SDR")} — {e.ProfilActuelAppliqué ?? Strings.TrayNoProfile}")
+            .ToList();
+        var tooltip = lignes.Count > 0
+            ? string.Join("\n", lignes)
+            : Strings.TrayNoDisplay;
         _notifyIcon.Text = LimiterTooltip(tooltip);
-        _itemÉtat.Text = Strings.TrayStateFormat(nomÉcran, mode);
+
+        // Menu = lignes d'état par écran
+        MajMenuÉtat();
+    }
+
+    /// <summary>
+    /// Reconstruit les lignes d'état (une par écran) en haut du menu contextuel.
+    /// </summary>
+    private void MajMenuÉtat()
+    {
+        // Retirer les anciennes lignes
+        foreach (var item in _itemsÉtat)
+        {
+            _menu.Items.Remove(item);
+            item.Dispose();
+        }
+        _itemsÉtat.Clear();
+
+        // Insérer une ligne par écran connecté
+        int idx = 0;
+        foreach (var écran in _écransActifs.OrderByDescending(e => e.EstPrincipal))
+        {
+            var mode = écran.EstHdrActif ? "HDR" : "SDR";
+            var item = new ToolStripMenuItem($"[{écran.Lettre}] {écran.NomConvivial} — {mode}") { Enabled = false };
+            _menu.Items.Insert(idx, item);
+            _itemsÉtat.Add(item);
+            idx++;
+        }
+
+        // Séparateur après les lignes d'état
+        if (_itemsÉtat.Count > 0)
+        {
+            var sep = new ToolStripSeparator();
+            _menu.Items.Insert(idx, sep);
+            _itemsÉtat.Add(sep);
+        }
     }
 
     private static DisplayMonitor? DéterminerÉcranPrincipal(List<DisplayMonitor> écrans)
@@ -156,11 +193,9 @@ public sealed class TrayIconManager : IDisposable
         if (écrans.Count == 0)
             return null;
 
-        return écrans
-            .OrderByDescending(x => x.EstConfiguré)
-            .ThenByDescending(x => x.EstHdrActif)
-            .ThenBy(x => x.NomConvivial)
-            .FirstOrDefault();
+        // Préférer l'écran principal Windows, sinon fallback sur le premier configuré
+        return écrans.FirstOrDefault(x => x.EstPrincipal)
+            ?? écrans.OrderByDescending(x => x.EstConfiguré).ThenBy(x => x.NomConvivial).FirstOrDefault();
     }
 
     private void OuvrirConfiguration()
@@ -216,7 +251,7 @@ public sealed class TrayIconManager : IDisposable
 
     private void AfficherÀPropos()
     {
-        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "4.4.2";
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "4.5.0";
         var message = Strings.AboutMessage + $"Version : {version}";
 
         MessageBox.Show(message, Strings.AboutTitle, MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -231,7 +266,8 @@ public sealed class TrayIconManager : IDisposable
 
     private static string LimiterTooltip(string texte)
     {
-        return texte.Length <= 63 ? texte : texte[..60] + "...";
+        // Windows Vista+ supporte 127 caractères pour NotifyIcon.Text
+        return texte.Length <= 127 ? texte : texte[..124] + "...";
     }
 
     private static Icon GénérerIcône(string lettre, bool hdr)
